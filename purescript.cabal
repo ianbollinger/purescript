@@ -275,6 +275,18 @@ executable psc-docs
                    Tags
     ghc-options: -Wall -O2
 
+executable psc-format
+    build-depends: base >=4 && <5, base-compat >=0.6.0,
+                   containers -any, directory -any, filepath -any,
+                   mtl -any, optparse-applicative >= 0.12.1, parsec -any, purescript -any,
+                   time -any, transformers -any, transformers-compat -any, Glob >= 0.7 && < 0.8,
+                   aeson >= 0.8 && < 0.12, bytestring -any, utf8-string >= 1 && < 2, wl-pprint >= 1.2
+    main-is: Main.hs
+    other-modules: Paths_purescript
+    buildable: True
+    hs-source-dirs: psc-format
+    ghc-options: -Wall -O2
+
 executable psc-publish
     build-depends: base >=4 && <5, purescript -any, bytestring -any, aeson -any, optparse-applicative -any
     main-is: Main.hs
