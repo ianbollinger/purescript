@@ -50,12 +50,15 @@ import Language.PureScript.Names
 import Language.PureScript.Parser.Lexer
 import Language.PureScript.Parser.Declarations
 import Language.PureScript.Errors as P hiding ((<>))
+import Language.PureScript.AST.Literals (Literal (..))
 import Language.PureScript.AST.SourcePos (SourcePos, SourceSpan)
-import Language.PureScript.AST.Declarations (Module (Module))
+import Language.PureScript.AST.Declarations (Module (Module), Declaration(..), Expr (..))
 
+-- Language.PureScript.Names
 instance Pretty (ProperName a) where
     pretty = text . runProperName
 
+-- Language.PureScript.Names
 instance Pretty ModuleName where
     pretty (ModuleName moduleName) =
         foldl (PP.<>) PP.empty
@@ -65,76 +68,94 @@ instance Pretty ModuleName where
 moduleNameSeparator :: Doc
 moduleNameSeparator = text "."
 
--- instance Pretty Declaration where
---     definitions
---     DataDeclaration DataDeclType (ProperName 'TypeName) [(String, Maybe Kind)] [(ProperName 'ConstructorName, [Type])]
---  -- |
---  -- A minimal mutually recursive set of data type declarations
---  --
---  | DataBindingGroupDeclaration [Declaration]
---  -- |
---  -- A type synonym declaration (name, arguments, type)
---  --
---  | TypeSynonymDeclaration (ProperName 'TypeName) [(String, Maybe Kind)] Type
---  -- |
---  -- A type declaration for a value (name, ty)
---  --
---  | TypeDeclaration Ident Type
---  -- |
---  -- A value declaration (name, top-level binders, optional guard, value)
---  --
---  | ValueDeclaration Ident NameKind [Binder] (Either [(Guard, Expr)] Expr)
---  -- |
---  -- A minimal mutually recursive set of value declarations
---  --
---  | BindingGroupDeclaration [(Ident, NameKind, Expr)]
---  -- |
---  -- A foreign import declaration (name, type)
---  --
---  | ExternDeclaration Ident Type
---  -- |
---  -- A data type foreign import (name, kind)
---  --
---  | ExternDataDeclaration (ProperName 'TypeName) Kind
---  -- |
---  -- A fixity declaration (fixity data, operator name, value the operator is an alias for)
---  --
---  | FixityDeclaration Fixity String (Maybe (Either (Qualified Ident) (Qualified (ProperName 'ConstructorName))))
---  -- |
---  -- A module import (module name, qualified/unqualified/hiding, optional "qualified as" name)
---  -- TODO: also a boolean specifying whether the old `qualified` syntax was used, so a warning can be raised in desugaring (remove for 0.9)
---  --
---  | ImportDeclaration ModuleName ImportDeclarationType (Maybe ModuleName) Bool
---  -- |
---  -- A type class declaration (name, argument, implies, member declarations)
---  --
---  | TypeClassDeclaration (ProperName 'ClassName) [(String, Maybe Kind)] [Constraint] [Declaration]
---  -- |
---  -- A type instance declaration (name, dependencies, class name, instance types, member
---  -- declarations)
---  --
---  | TypeInstanceDeclaration Ident [Constraint] (Qualified (ProperName 'ClassName)) [Type] TypeInstanceBody
---  -- |
---  -- A declaration with source position information
+-- Language.PureScript.Names
+instance Pretty Ident where
+    pretty (Ident i) = text i
+    pretty (Op o) = text o
+    pretty (GenIdent mstring integer) = text "genIdent"
+
+-- Language.PureScript.AST.Declarations
+instance Pretty Declaration where
+    pretty (DataDeclaration dataDeclType properName a b) = text "DataDeclaration"
+    pretty (DataBindingGroupDeclaration declarations) = text "DataBindingGroupDeclaration"
+    pretty (TypeSynonymDeclaration propertyName a typ) = text "TypeSynonymDeclaration"
+    pretty (TypeDeclaration ident typ) = text "TypeDeclaration"
+    pretty (ValueDeclaration ident nameKind binders expr) =
+        let
+            e =
+                case expr of
+                    Left guards -> text "ValueDeclaration - Guards"
+                    Right expression -> pretty expression
+        in
+            pretty ident <+> text "=" <+> e
+    pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
+    pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
+    pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
+    pretty (FixityDeclaration fixity string mqualified) = text "FixityDeclaration"
+    pretty (ImportDeclaration moduleName importDeclarationType mmoduleName bool) = text "import" <+> pretty moduleName
+    pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclaration"
+    pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody) = text "TypeInstanceDeclaration"
+    pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
 
 pprintModule :: Module -> Doc
 pprintModule (Module sourceSpan comments moduleName declarations _) =
-    text "module" <+> pretty moduleName <> PP.line
---pprint ::
+    text "module" <+> pretty moduleName <+> text "where" <> PP.line <> vsep (fmap pretty declarations)
+
+-- Language.PureScript.AST.Declarations
+instance Pretty Expr where
+    pretty (Literal literal) = pretty literal
+    pretty (UnaryMinus expr) = text "-" <> pretty expr
+    pretty (BinaryNoParens expr1 expr2 expr3) = pretty "BinaryNoParens"
+    pretty (Parens expr) = text "(" <> pretty expr <> text ")"
+    pretty (OperatorSection expr lr) = pretty "OperatorSection"
+    pretty (ObjectGetter s) = text "_." <> text s
+    pretty (Accessor s expr) = text "Accessor"
+    pretty (ObjectUpdate expr ss) = text "ObjectUpdate"
+    pretty (Abs l expr) = pretty "Abs"
+    pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
+    pretty (Var qualified) = pretty qualified
+    pretty (IfThenElse expr1 expr2 expr3) = text "if" <+> pretty expr1 PP.<$> text "then" <+> pretty expr2 PP.<$> text "else" <+> pretty expr3
+    pretty (Constructor qualified) = text "Constructor"
+    pretty (Case exprs caseAlternatives) = text "Case"
+    pretty (TypedValue bool expr typ) = text "TypedValue"
+    pretty (Let declarations expr) = text "Let"
+    pretty (Do doNotationElements) = text "Do"
+    pretty (TypeClassDictionaryConstructorApp qualified expr) = text "TypeClassDictionaryConstructorApp"
+    pretty (TypeClassDictionary constraint a) = text "TypeClassDictionary"
+    pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
+    pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
+    pretty AnonymousArgument = text "AnonymousArgument"
+    pretty (PositionedValue sourceSpan comments expr) = pretty expr
+
+-- Language.PureScript.Names
+instance Pretty a => Pretty (Qualified a) where
+    pretty (Qualified mN n) =
+        pretty moduleName <> pretty n
+        where
+            moduleName =
+                case mN of
+                    Just name -> pretty name
+                    Nothing -> text ""
+
+-- Language.PureScript.AST.Literals
+instance Pretty a => Pretty (Literal a) where
+    pretty (NumericLiteral id) = text "integer or double"
+    pretty (StringLiteral s) = text ("\"" ++ s ++ "\"")
+    pretty (CharLiteral c) = text ['\'', c, '\'']
+    pretty (BooleanLiteral b) = text $ if b then "true" else "false"
+    pretty (ArrayLiteral vs) = text "[" <> text "]"
+    pretty (ObjectLiteral os) = text "Object {}"
 
 main :: IO ()
 main = do
-    let filename = "Main.hs"
-    let content = "module Main where"
-    let ts = lex filename content
-    case parseModulesFromFiles id [("Main", "module Main where\nimport Control.Monad.Eff.Console\nmain = log \"hell\"")] of
+    let file = "module Main where\nimport Control.Monad.Eff.Console\nmain = log \"hello\""
+    putStrLn file
+    putStrLn "-----------"
+    case parseModulesFromFiles id [("Main", file)] of
         Right v -> do
-            let [(_, (Module _ _ _ declarations b))] = v
+            let [(_, Module _ _ _ declarations _)] = v
             print declarations
-            print b
             putStrLn "------------"
-            print $ fmap (\(_, m) -> (displayS $ renderCompact $ pprintModule m) "") v
+            putStrLn $ displayS (renderCompact $ vsep $ fmap (\(_, m) -> pprintModule m) v) ""
         Left e ->
             putStrLn $ P.prettyPrintMultipleErrors False e
-    putStrLn "Hello"
-    print ts
