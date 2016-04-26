@@ -6,6 +6,7 @@ module Language.PureScript.Docs.AsMarkdown
   , Docs
   , runDocs
   , modulesAsMarkdown
+  , codeToString
   ) where
 
 import Prelude ()
@@ -79,7 +80,7 @@ codeToString :: RenderedCode -> String
 codeToString = outputWith elemAsMarkdown
   where
   elemAsMarkdown (Syntax x)  = x
-  elemAsMarkdown (Ident x)   = x
+  elemAsMarkdown (Ident x _) = x
   elemAsMarkdown (Ctor x _)  = x
   elemAsMarkdown (Kind x)    = x
   elemAsMarkdown (Keyword x) = x

@@ -17,7 +17,9 @@ import System.Exit
 
 import qualified Language.PureScript as P
 import qualified Language.PureScript.Docs as Docs
+import Language.PureScript.Docs.AsMarkdown (codeToString)
 import qualified Language.PureScript.Publish as Publish
+import qualified Language.PureScript.Publish.ErrorsWarnings as Publish
 
 import TestUtils
 
@@ -29,16 +31,19 @@ publishOpts = Publish.defaultPublishOptions
   where testVersion = ("v999.0.0", Version [999,0,0] [])
 
 main :: IO ()
-main = do
-  pushd "examples/docs" $ do
-    Docs.Package{..} <- Publish.preparePackage publishOpts
-    forM_ testCases $ \(P.moduleNameFromString -> mn, pragmas) ->
-      let mdl = takeJust ("module not found in docs: " ++ P.runModuleName mn)
-                         (find ((==) mn . Docs.modName) pkgModules)
-      in forM_ pragmas (flip runAssertionIO mdl)
+main = pushd "examples/docs" $ do
+  res <- Publish.preparePackage publishOpts
+  case res of
+    Left e -> Publish.printErrorToStdout e >> exitFailure
+    Right Docs.Package{..} ->
+      forM_ testCases $ \(P.moduleNameFromString -> mn, pragmas) ->
+        let mdl = takeJust ("module not found in docs: " ++ P.runModuleName mn)
+                          (find ((==) mn . Docs.modName) pkgModules)
+        in forM_ pragmas (`runAssertionIO` mdl)
+
 
 takeJust :: String -> Maybe a -> a
-takeJust msg = maybe (error msg) id
+takeJust msg = fromMaybe (error msg)
 
 data Assertion
   -- | Assert that a particular declaration is documented with the given
@@ -55,6 +60,10 @@ data Assertion
   -- | Assert that a particular value declaration exists, and its type
   -- satisfies the given predicate.
   | ValueShouldHaveTypeSignature P.ModuleName String (ShowFn (P.Type -> Bool))
+  -- | Assert that a particular type alias exists, and its corresponding
+  -- type, when rendered, matches a given string exactly
+  -- fields: module, type synonym name, expected type
+  | TypeSynonymShouldRenderAs P.ModuleName String String
   deriving (Show)
 
 newtype ShowFn a = ShowFn a
@@ -81,6 +90,9 @@ data AssertionFailure
   -- should have been.
   -- Fields: module name, declaration name, actual type.
   | ValueDeclarationWrongType P.ModuleName String P.Type
+  -- | A Type synonym has been rendered in an unexpected format
+  -- Fields: module name, declaration name, expected rendering, actual rendering
+  | TypeSynonymMismatch P.ModuleName String String String
   deriving (Show)
 
 data AssertionResult
@@ -144,6 +156,21 @@ runAssertion assertion Docs.Module{..} =
             _ ->
               Fail (WrongDeclarationType mn decl "value"
                      (Docs.declInfoToString declInfo))
+
+    TypeSynonymShouldRenderAs mn decl expected ->
+      case find ((==) decl . Docs.declTitle) (declarationsFor mn) of
+        Nothing ->
+          Fail (NotDocumented mn decl)
+        Just Docs.Declaration{..} ->
+          case declInfo of
+            Docs.TypeSynonymDeclaration [] ty ->
+              let actual = codeToString (Docs.renderType ty) in
+              if actual == expected
+                 then Pass
+                 else Fail (TypeSynonymMismatch mn decl expected actual)
+            _ ->
+              Fail (WrongDeclarationType mn decl "synonym"
+                    (Docs.declInfoToString declInfo))
 
   where
   declarationsFor mn =
@@ -254,8 +281,23 @@ testCases =
 
   , ("ExplicitTypeSignatures",
       [ ValueShouldHaveTypeSignature (n "ExplicitTypeSignatures") "explicit" (ShowFn (hasTypeVar "something"))
-      , ValueShouldHaveTypeSignature (n "ExplicitTypeSignatures") "anInt"    (ShowFn ((==) P.tyInt))
-      , ValueShouldHaveTypeSignature (n "ExplicitTypeSignatures") "aNumber"  (ShowFn ((==) P.tyNumber))
+      , ValueShouldHaveTypeSignature (n "ExplicitTypeSignatures") "anInt"    (ShowFn (P.tyInt ==))
+      , ValueShouldHaveTypeSignature (n "ExplicitTypeSignatures") "aNumber"  (ShowFn (P.tyNumber ==))
+      ])
+
+  , ("ConstrainedArgument",
+      [ TypeSynonymShouldRenderAs (n "ConstrainedArgument") "WithoutArgs" "forall a. (Partial => a) -> a"
+      , TypeSynonymShouldRenderAs (n "ConstrainedArgument") "WithArgs" "forall a. (Foo a => a) -> a"
+      , TypeSynonymShouldRenderAs (n "ConstrainedArgument") "MultiWithoutArgs" "forall a. ((Partial, Partial) => a) -> a"
+      , TypeSynonymShouldRenderAs (n "ConstrainedArgument") "MultiWithArgs" "forall a b. ((Foo a, Foo b) => a) -> a"
+      ])
+
+  , ("TypeOpAliases",
+      [ ValueShouldHaveTypeSignature (n "TypeOpAliases") "test1" (renderedType "forall a b. a ~> b")
+      , ValueShouldHaveTypeSignature (n "TypeOpAliases") "test2" (renderedType "forall a b c. a ~> b ~> c")
+      , ValueShouldHaveTypeSignature (n "TypeOpAliases") "test3" (renderedType "forall a b c d. a ~> (b ~> c) ~> d")
+      , ValueShouldHaveTypeSignature (n "TypeOpAliases") "test4" (renderedType "forall a b c d. ((a ~> b) ~> c) ~> d")
+      , ValueShouldHaveTypeSignature (n "TypeOpAliases") "third" (renderedType "forall a b c. a × b × c -> c")
       ])
   ]
 
@@ -267,3 +309,6 @@ testCases =
 
   isVar varName (P.TypeVar name) | varName == name = True
   isVar _ _ = False
+
+  renderedType expected =
+    ShowFn $ \ty -> codeToString (Docs.renderType ty) == expected

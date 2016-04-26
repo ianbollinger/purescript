@@ -10,8 +10,9 @@ import Prelude.Compat
 import Data.Ord (comparing)
 import Data.Char (isSpace)
 import Data.Either (lefts, rights)
-import Data.List (intercalate, transpose, nub, nubBy, sortBy)
+import Data.List (intercalate, transpose, nub, nubBy, sortBy, partition)
 import Data.Foldable (fold)
+import Data.Maybe (maybeToList)
 
 import qualified Data.Map as M
 
@@ -28,6 +29,7 @@ import Language.PureScript.Pretty.Common (before)
 import Language.PureScript.Types
 import Language.PureScript.Names
 import Language.PureScript.Kinds
+import qualified Language.PureScript.Bundle as Bundle
 
 import qualified Text.PrettyPrint.Boxes as Box
 
@@ -37,11 +39,14 @@ import Text.Parsec.Error (Message(..))
 
 -- | A type of error messages
 data SimpleErrorMessage
-  = ErrorParsingFFIModule FilePath
+  = ErrorParsingFFIModule FilePath (Maybe Bundle.ErrorMessage)
   | ErrorParsingModule P.ParseError
   | MissingFFIModule ModuleName
   | MultipleFFIModules ModuleName [FilePath]
   | UnnecessaryFFIModule ModuleName FilePath
+  | MissingFFIImplementations ModuleName [Ident]
+  | UnusedFFIImplementations ModuleName [Ident]
+  | InvalidFFIIdentifier ModuleName String
   | CannotGetFileInfo FilePath
   | CannotReadFile FilePath
   | CannotWriteFile FilePath
@@ -55,12 +60,15 @@ data SimpleErrorMessage
   | OverlappingNamesInLet
   | UnknownModule ModuleName
   | UnknownType (Qualified (ProperName 'TypeName))
+  | UnknownTypeOp (Qualified Ident)
   | UnknownTypeClass (Qualified (ProperName 'ClassName))
   | UnknownValue (Qualified Ident)
   | UnknownDataConstructor (Qualified (ProperName 'ConstructorName)) (Maybe (Qualified (ProperName 'ConstructorName)))
   | UnknownTypeConstructor (Qualified (ProperName 'TypeName))
   | UnknownImportType ModuleName (ProperName 'TypeName)
   | UnknownExportType (ProperName 'TypeName)
+  | UnknownImportTypeOp ModuleName Ident
+  | UnknownExportTypeOp Ident
   | UnknownImportTypeClass ModuleName (ProperName 'ClassName)
   | UnknownExportTypeClass (ProperName 'ClassName)
   | UnknownImportValue ModuleName Ident
@@ -79,6 +87,7 @@ data SimpleErrorMessage
   | DuplicateModuleName ModuleName
   | DuplicateClassExport (ProperName 'ClassName)
   | DuplicateValueExport Ident
+  | DuplicateTypeOpExport Ident
   | DuplicateTypeArgument String
   | InvalidDoBind
   | InvalidDoLet
@@ -119,6 +128,7 @@ data SimpleErrorMessage
   | ShadowedTypeVar String
   | UnusedTypeVar String
   | WildcardInferredType Type
+  | HoleInferredType String Type
   | MissingTypeDeclaration Ident Type
   | NotExhaustivePattern [[Binder]] Bool
   | OverlappingPattern [[Binder]] Bool
@@ -135,7 +145,6 @@ data SimpleErrorMessage
   | DeprecatedQualifiedSyntax ModuleName ModuleName
   | DeprecatedClassImport ModuleName (ProperName 'ClassName)
   | DeprecatedClassExport (ProperName 'ClassName)
-  | RedundantUnqualifiedImport ModuleName ImportDeclarationType
   | DuplicateSelectiveImport ModuleName
   | DuplicateImport ModuleName ImportDeclarationType (Maybe ModuleName)
   | DuplicateImportRef String
@@ -148,6 +157,8 @@ data SimpleErrorMessage
   | CaseBinderLengthDiffers Int [Binder]
   | IncorrectAnonymousArgument
   | InvalidOperatorInBinder Ident Ident
+  | DeprecatedRequirePath
+  | CannotGeneralizeRecursiveFunction Ident Type
   deriving (Show)
 
 -- | Error message hints, providing more detailed information about failure.
@@ -222,6 +233,9 @@ errorCode em = case unwrapErrorMessage em of
   MissingFFIModule{} -> "MissingFFIModule"
   MultipleFFIModules{} -> "MultipleFFIModules"
   UnnecessaryFFIModule{} -> "UnnecessaryFFIModule"
+  MissingFFIImplementations{} -> "MissingFFIImplementations"
+  UnusedFFIImplementations{} -> "UnusedFFIImplementations"
+  InvalidFFIIdentifier{} -> "InvalidFFIIdentifier"
   CannotGetFileInfo{} -> "CannotGetFileInfo"
   CannotReadFile{} -> "CannotReadFile"
   CannotWriteFile{} -> "CannotWriteFile"
@@ -235,12 +249,15 @@ errorCode em = case unwrapErrorMessage em of
   OverlappingNamesInLet -> "OverlappingNamesInLet"
   UnknownModule{} -> "UnknownModule"
   UnknownType{} -> "UnknownType"
+  UnknownTypeOp{} -> "UnknownTypeOp"
   UnknownTypeClass{} -> "UnknownTypeClass"
   UnknownValue{} -> "UnknownValue"
   UnknownDataConstructor{} -> "UnknownDataConstructor"
   UnknownTypeConstructor{} -> "UnknownTypeConstructor"
   UnknownImportType{} -> "UnknownImportType"
+  UnknownImportTypeOp{} -> "UnknownImportTypeOp"
   UnknownExportType{} -> "UnknownExportType"
+  UnknownExportTypeOp{} -> "UnknownExportTypeOp"
   UnknownImportTypeClass{} -> "UnknownImportTypeClass"
   UnknownExportTypeClass{} -> "UnknownExportTypeClass"
   UnknownImportValue{} -> "UnknownImportValue"
@@ -259,6 +276,7 @@ errorCode em = case unwrapErrorMessage em of
   DuplicateModuleName{} -> "DuplicateModuleName"
   DuplicateClassExport{} -> "DuplicateClassExport"
   DuplicateValueExport{} -> "DuplicateValueExport"
+  DuplicateTypeOpExport{} -> "DuplicateTypeOpExport"
   DuplicateTypeArgument{} -> "DuplicateTypeArgument"
   InvalidDoBind -> "InvalidDoBind"
   InvalidDoLet -> "InvalidDoLet"
@@ -299,6 +317,7 @@ errorCode em = case unwrapErrorMessage em of
   ShadowedTypeVar{} -> "ShadowedTypeVar"
   UnusedTypeVar{} -> "UnusedTypeVar"
   WildcardInferredType{} -> "WildcardInferredType"
+  HoleInferredType{} -> "HoleInferredType"
   MissingTypeDeclaration{} -> "MissingTypeDeclaration"
   NotExhaustivePattern{} -> "NotExhaustivePattern"
   OverlappingPattern{} -> "OverlappingPattern"
@@ -315,7 +334,6 @@ errorCode em = case unwrapErrorMessage em of
   DeprecatedQualifiedSyntax{} -> "DeprecatedQualifiedSyntax"
   DeprecatedClassImport{} -> "DeprecatedClassImport"
   DeprecatedClassExport{} -> "DeprecatedClassExport"
-  RedundantUnqualifiedImport{} -> "RedundantUnqualifiedImport"
   DuplicateSelectiveImport{} -> "DuplicateSelectiveImport"
   DuplicateImport{} -> "DuplicateImport"
   DuplicateImportRef{} -> "DuplicateImportRef"
@@ -328,6 +346,8 @@ errorCode em = case unwrapErrorMessage em of
   CaseBinderLengthDiffers{} -> "CaseBinderLengthDiffers"
   IncorrectAnonymousArgument -> "IncorrectAnonymousArgument"
   InvalidOperatorInBinder{} -> "InvalidOperatorInBinder"
+  DeprecatedRequirePath{} -> "DeprecatedRequirePath"
+  CannotGeneralizeRecursiveFunction{} -> "CannotGeneralizeRecursiveFunction"
 
 -- |
 -- A stack trace for an error
@@ -417,7 +437,9 @@ onTypesInErrorMessageM f (ErrorMessage hints simple) = ErrorMessage <$> traverse
   gSimple (ExpectedType ty k) = ExpectedType <$> f ty <*> pure k
   gSimple (OrphanInstance nm cl ts) = OrphanInstance nm cl <$> traverse f ts
   gSimple (WildcardInferredType ty) = WildcardInferredType <$> f ty
+  gSimple (HoleInferredType name ty) = HoleInferredType name <$> f ty
   gSimple (MissingTypeDeclaration nm ty) = MissingTypeDeclaration nm <$> f ty
+  gSimple (CannotGeneralizeRecursiveFunction nm ty) = CannotGeneralizeRecursiveFunction nm <$> f ty
 
   gSimple other = pure other
 
@@ -441,7 +463,6 @@ errorSuggestion err = case err of
   UnusedImport{} -> emptySuggestion
   RedundantEmptyHidingImport{} -> emptySuggestion
   DuplicateImport{} -> emptySuggestion
-  RedundantUnqualifiedImport{} -> emptySuggestion
   DeprecatedQualifiedSyntax name qualName -> suggest $
     "import " ++ runModuleName name ++ " as " ++ runModuleName qualName
   UnusedExplicitImport mn _ qual refs -> suggest $ importSuggestion mn refs qual
@@ -520,10 +541,11 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       paras [ line "Unable to write file: "
             , indent . line $ path
             ]
-    renderSimpleErrorMessage (ErrorParsingFFIModule path) =
-      paras [ line "Unable to parse foreign module:"
-            , indent . line $ path
-            ]
+    renderSimpleErrorMessage (ErrorParsingFFIModule path extra) =
+      paras $ [ line "Unable to parse foreign module:"
+              , indent . line $ path
+              ] ++
+              (map (indent . line) (concatMap Bundle.printErrorMessage (maybeToList extra)))
     renderSimpleErrorMessage (ErrorParsingModule err) =
       paras [ line "Unable to parse module: "
             , prettyPrintParseError err
@@ -534,6 +556,21 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       paras [ line $ "An unnecessary foreign module implementation was provided for module " ++ runModuleName mn ++ ": "
             , indent . line $ path
             , line $ "Module " ++ runModuleName mn ++ " does not contain any foreign import declarations, so a foreign module is not necessary."
+            ]
+    renderSimpleErrorMessage (MissingFFIImplementations mn idents) =
+      paras [ line $ "The following values are not defined in the foreign module for module " ++ runModuleName mn ++ ": "
+            , indent . paras $ map (line . runIdent) idents
+            ]
+    renderSimpleErrorMessage (UnusedFFIImplementations mn idents) =
+      paras [ line $ "The following definitions in the foreign module for module " ++ runModuleName mn ++ " are unused: "
+            , indent . paras $ map (line . runIdent) idents
+            ]
+    renderSimpleErrorMessage (InvalidFFIIdentifier mn ident) =
+      paras [ line $ "In the FFI module for " ++ runModuleName mn ++ ":"
+            , indent . paras $
+                [ line $ "The identifier `" ++ ident ++ "` is not valid in PureScript."
+                , line "Note that exported identifiers in FFI modules must be valid PureScript identifiers."
+                ]
             ]
     renderSimpleErrorMessage (MultipleFFIModules mn paths) =
       paras [ line $ "Multiple foreign module implementations have been provided for module " ++ runModuleName mn ++ ": "
@@ -569,6 +606,8 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       line $ "Unknown module " ++ runModuleName mn
     renderSimpleErrorMessage (UnknownType name) =
       line $ "Unknown type " ++ showQualified runProperName name
+    renderSimpleErrorMessage (UnknownTypeOp name) =
+      line $ "Unknown type operator " ++ showQualified showIdent name
     renderSimpleErrorMessage (UnknownTypeClass name) =
       line $ "Unknown type class " ++ showQualified runProperName name
     renderSimpleErrorMessage (UnknownValue name) =
@@ -583,6 +622,12 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
             ]
     renderSimpleErrorMessage (UnknownExportType name) =
       line $ "Cannot export unknown type " ++ runProperName name
+    renderSimpleErrorMessage (UnknownImportTypeOp mn name) =
+      paras [ line $ "Cannot import type operator " ++ showIdent name ++ " from module " ++ runModuleName mn
+            , line "It either does not exist or the module does not export it."
+            ]
+    renderSimpleErrorMessage (UnknownExportTypeOp name) =
+      line $ "Cannot export unknown type operator " ++ showIdent name
     renderSimpleErrorMessage (UnknownImportTypeClass mn name) =
       paras [ line $ "Cannot import type class " ++ runProperName name ++ " from module " ++ runModuleName mn
             , line "It either does not exist or the module does not export it."
@@ -632,10 +677,12 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       line $ "Duplicate export declaration for type class " ++ runProperName nm
     renderSimpleErrorMessage (DuplicateValueExport nm) =
       line $ "Duplicate export declaration for value " ++ showIdent nm
+    renderSimpleErrorMessage (DuplicateTypeOpExport nm) =
+      line $ "Duplicate export declaration for type operator " ++ showIdent nm
     renderSimpleErrorMessage (CycleInDeclaration nm) =
       line $ "The value of " ++ showIdent nm ++ " is undefined here, so this reference is not allowed."
     renderSimpleErrorMessage (CycleInModules mns) =
-      paras [ line $ "There is a cycle in module dependencies in these modules: "
+      paras [ line "There is a cycle in module dependencies in these modules: "
             , indent $ paras (map (line . runModuleName) mns)
             ]
     renderSimpleErrorMessage (CycleInTypeSynonym name) =
@@ -669,7 +716,7 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
             sortRows' :: ([(String, Type)], Type) -> ([(String, Type)], Type) -> (Type, Type)
             sortRows' (s1, r1) (s2, r2) =
               let common :: [(String, (Type, Type))]
-                  common = sortBy (comparing fst) $ [ (name, (t1, t2)) | (name, t1) <- s1, (name', t2) <- s2, name == name' ]
+                  common = sortBy (comparing fst) [ (name, (t1, t2)) | (name, t1) <- s1, (name', t2) <- s2, name == name' ]
 
                   sd1, sd2 :: [(String, Type)]
                   sd1 = [ (name, t1) | (name, t1) <- s1, name `notElem` map fst s2 ]
@@ -828,6 +875,10 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       paras [ line "Wildcard type definition has the inferred type "
             , indent $ typeAsBox ty
             ]
+    renderSimpleErrorMessage (HoleInferredType name ty) =
+      paras [ line $ "Hole '" ++ name ++ "' has the inferred type "
+            , indent $ typeAsBox ty
+            ]
     renderSimpleErrorMessage (MissingTypeDeclaration ident ty) =
       paras [ line $ "No type declaration was provided for the top-level declaration of " ++ showIdent ident ++ "."
             , line "It is good practice to provide type declarations as a form of documentation."
@@ -838,8 +889,9 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       paras [ line "A case expression could not be determined to cover all inputs."
             , line "The following additional cases are required to cover all inputs:\n"
             , indent $ paras $
-                [ Box.hsep 1 Box.left (map (paras . map (line . prettyPrintBinderAtom)) (transpose bs)) ]
-                ++ [ line "..." | not b ]
+                Box.hsep 1 Box.left
+                  (map (paras . map (line . prettyPrintBinderAtom)) (transpose bs))
+                  : [line "..." | not b]
             , line "Or alternatively, add a Partial constraint to the type of the enclosing value."
             , line "Non-exhaustive patterns for values without a `Partial` constraint will be disallowed in PureScript 0.9."
             ]
@@ -923,9 +975,6 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
             , line "The deprecated syntax will be removed in PureScript 0.9."
             ]
 
-    renderSimpleErrorMessage (RedundantUnqualifiedImport name imp) =
-      line $ "Import of " ++ prettyPrintImport name imp Nothing ++ " is redundant due to a whole-module import"
-
     renderSimpleErrorMessage (DuplicateSelectiveImport name) =
       line $ "There is an existing import of " ++ runModuleName name ++ ", consider merging the import lists"
 
@@ -971,9 +1020,19 @@ prettyPrintSingleError full level showWiki e = flip evalState defaultUnknownMap 
       line "An anonymous function argument appears in an invalid context."
 
     renderSimpleErrorMessage (InvalidOperatorInBinder op fn) =
-      paras $ [ line $ "Operator " ++ showIdent op ++ " cannot be used in a pattern as it is an alias for function " ++ showIdent fn ++ "."
-              , line "Only aliases for data constructors may be used in patterns."
-              ]
+      paras [ line $ "Operator " ++ showIdent op ++ " cannot be used in a pattern as it is an alias for function " ++ showIdent fn ++ "."
+            , line "Only aliases for data constructors may be used in patterns."
+            ]
+
+    renderSimpleErrorMessage DeprecatedRequirePath =
+      line "The require-path option is deprecated and will be removed in PureScript 0.9."
+
+    renderSimpleErrorMessage (CannotGeneralizeRecursiveFunction ident ty) =
+      paras [ line $ "Unable to generalize the type of the recursive function " ++ showIdent ident ++ "."
+            , line $ "The inferred type of " ++ showIdent ident ++ " was:"
+            , indent $ typeAsBox ty
+            , line "Try adding a type signature."
+            ]
 
     renderHint :: ErrorMessageHint -> Box.Box -> Box.Box
     renderHint (ErrorUnifyingTypes t1 t2) detail =
@@ -1171,6 +1230,7 @@ prettyPrintRef :: DeclarationRef -> String
 prettyPrintRef (TypeRef pn Nothing) = runProperName pn ++ "(..)"
 prettyPrintRef (TypeRef pn (Just [])) = runProperName pn
 prettyPrintRef (TypeRef pn (Just dctors)) = runProperName pn ++ "(" ++ intercalate ", " (map runProperName dctors) ++ ")"
+prettyPrintRef (TypeOpRef ident) = "type " ++ showIdent ident
 prettyPrintRef (ValueRef ident) = showIdent ident
 prettyPrintRef (TypeClassRef pn) = "class " ++ runProperName pn
 prettyPrintRef (ProperRef name) = name
@@ -1192,11 +1252,11 @@ prettyPrintMultipleWarnings full = unlines . map renderBox . prettyPrintMultiple
 
 -- | Pretty print warnings as a Box
 prettyPrintMultipleWarningsBox :: Bool -> MultipleErrors -> [Box.Box]
-prettyPrintMultipleWarningsBox full = prettyPrintMultipleErrorsWith Warning "Warning found:" "Warning" full
+prettyPrintMultipleWarningsBox = prettyPrintMultipleErrorsWith Warning "Warning found:" "Warning"
 
 -- | Pretty print errors as a Box
 prettyPrintMultipleErrorsBox :: Bool -> MultipleErrors -> [Box.Box]
-prettyPrintMultipleErrorsBox full = prettyPrintMultipleErrorsWith Error "Error found:" "Error" full
+prettyPrintMultipleErrorsBox = prettyPrintMultipleErrorsWith Error "Error found:" "Error"
 
 prettyPrintMultipleErrorsWith :: Level -> String -> String -> Bool -> MultipleErrors -> [Box.Box]
 prettyPrintMultipleErrorsWith level intro _ full (MultipleErrors [e]) =
@@ -1308,6 +1368,22 @@ warnAndRethrowWithPosition pos = rethrowWithPosition pos . warnWithPosition pos
 
 withPosition :: SourceSpan -> ErrorMessage -> ErrorMessage
 withPosition pos (ErrorMessage hints se) = ErrorMessage (PositionedError pos : hints) se
+
+-- |
+-- Runs a computation listening for warnings and then escalating any warnings
+-- that match the predicate to error status.
+--
+escalateWarningWhen
+  :: (MonadWriter MultipleErrors m, MonadError MultipleErrors m)
+  => (ErrorMessage -> Bool)
+  -> m a
+  -> m a
+escalateWarningWhen isError ma = do
+  (a, w) <- censor (const mempty) $ listen ma
+  let (errors, warnings) = partition isError (runMultipleErrors w)
+  tell $ MultipleErrors warnings
+  unless (null errors) $ throwError $ MultipleErrors errors
+  return a
 
 -- |
 -- Collect errors in in parallel

@@ -1,17 +1,4 @@
 {-# LANGUAGE TupleSections #-}
-----------------------------------------------------------------------------
---
--- Module      :  Main
--- Copyright   :  (c) Phil Freeman 2013
--- License     :  MIT
---
--- Maintainer  :  Phil Freeman <paf31@cantab.net>
--- Stability   :  experimental
--- Portability :
---
--- |
---
------------------------------------------------------------------------------
 
 module Main where
 
@@ -32,7 +19,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import qualified Language.PureScript as P
 import qualified Paths_purescript as Paths
 import System.Exit (exitFailure)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, hPrint, hSetEncoding, stderr, stdout, utf8)
+import System.IO.UTF8 (readUTF8File)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
 import System.FilePath.Glob (glob)
@@ -139,7 +127,7 @@ dumpTags input renderTags = do
   e <- P.parseModulesFromFiles (fromMaybe "") <$> mapM (fmap (first Just) . parseFile) (nub input)
   case e of
     Left err -> do
-      hPutStrLn stderr (show err)
+      hPrint stderr err
       exitFailure
     Right ms ->
       ldump (renderTags (pairs ms))
@@ -152,7 +140,7 @@ dumpTags input renderTags = do
   ldump = mapM_ putStrLn
 
 parseFile :: FilePath -> IO (FilePath, String)
-parseFile input = (,) input <$> readFile input
+parseFile input = (,) input <$> readUTF8File input
 
 inputFile :: Parser FilePath
 inputFile = strArgument $
@@ -228,7 +216,10 @@ buildOptions (fmt, input, mapping) =
       exitFailure
 
 main :: IO ()
-main = execParser opts >>= buildOptions >>= docgen
+main = do
+  hSetEncoding stdout utf8
+  hSetEncoding stderr utf8
+  execParser opts >>= buildOptions >>= docgen
   where
   opts        = info (version <*> helper <*> pscDocsOptions) infoModList
   infoModList = fullDesc <> headerInfo <> footerInfo

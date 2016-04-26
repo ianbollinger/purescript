@@ -23,7 +23,7 @@ import Prelude.Compat
 import Control.Monad.State (StateT, modify, get)
 import Data.List (elemIndices, intersperse)
 
-import Language.PureScript.Parser.Lexer (reservedPsNames, isSymbolChar)
+import Language.PureScript.Parser.Lexer (reservedPsNames, isUnquotedKey)
 import Language.PureScript.AST (SourcePos(..), SourceSpan(..))
 
 import Text.PrettyPrint.Boxes
@@ -148,15 +148,15 @@ prettyPrintMany :: (Emit gen) => (a -> StateT PrinterState Maybe gen) -> [a] -> 
 prettyPrintMany f xs = do
   ss <- mapM f xs
   indentString <- currentIndent
-  return $ intercalate (emit "\n") $ map (\s -> mappend indentString s) ss
+  return $ intercalate (emit "\n") $ map (mappend indentString) ss
 
 -- |
 -- Prints an object key, escaping reserved names.
 --
 prettyPrintObjectKey :: String -> String
 prettyPrintObjectKey s | s `elem` reservedPsNames = show s
-                       | any isSymbolChar s = show s
-                       | otherwise = s
+                       | isUnquotedKey s = s
+                       | otherwise = show s
 
 -- | Place a box before another, vertically when the first box takes up multiple lines.
 before :: Box -> Box -> Box

@@ -35,6 +35,7 @@ import qualified Language.PureScript.Constants as C
 data Name
   = IdentName (Qualified Ident)
   | TyName (Qualified (ProperName 'TypeName))
+  | TyOpName (Qualified Ident)
   | DctorName (Qualified (ProperName 'ConstructorName))
   | TyClassName (Qualified (ProperName 'ClassName))
   deriving (Eq, Show)
@@ -42,6 +43,10 @@ data Name
 getIdentName :: Maybe ModuleName -> Name -> Maybe Ident
 getIdentName q (IdentName (Qualified q' name)) | q == q' = Just name
 getIdentName _ _ = Nothing
+
+getTypeOpName :: Maybe ModuleName -> Name -> Maybe Ident
+getTypeOpName q (TyOpName (Qualified q' name)) | q == q' = Just name
+getTypeOpName _ _ = Nothing
 
 getTypeName :: Maybe ModuleName -> Name -> Maybe (ProperName 'TypeName)
 getTypeName q (TyName (Qualified q' name)) | q == q' = Just name
@@ -152,7 +157,7 @@ lintImports (Module _ _ mn mdecls mexports) env usedImps = do
     in foldr go used (classes ++ types ++ dctors ++ values)
     where
     go :: (ModuleName, Name) -> UsedImports -> UsedImports
-    go (q, name) acc = M.alter (Just . maybe [name] (name :)) q acc
+    go (q, name) = M.alter (Just . maybe [name] (name :)) q
 
   extractByQual
     :: (Eq a)
@@ -162,10 +167,15 @@ lintImports (Module _ _ mn mdecls mexports) env usedImps = do
     -> [(ModuleName, Name)]
   extractByQual k m toName = mapMaybe go (M.toList m)
     where
-    go (q@(Qualified mnq _), is) | isUnqualified q || isQualifiedWith k q =
-      case importName (head is) of
-        Qualified (Just mn') name -> Just (mn', toName $ Qualified mnq name)
-        _ -> internalError "unqualified name in extractByQual"
+    go (q@(Qualified mnq _), is)
+      | isUnqualified q =
+          case find (isQualifiedWith k) (map importName is) of
+            Just (Qualified _ name) -> Just (k, toName $ Qualified mnq name)
+            _ -> Nothing
+      | isQualifiedWith k q =
+        case importName (head is) of
+          Qualified (Just mn') name -> Just (mn', toName $ Qualified mnq name)
+          _ -> internalError "unqualified name in extractByQual"
     go _ = Nothing
 
 lintImportDecl
@@ -185,7 +195,7 @@ lintImportDecl env mni qualifierName names declType allowImplicit =
       Just q ->
         let usedModuleNames = mapMaybe extractQualName names
         in unless (q `elem` usedModuleNames) unused
-    Hiding _ -> checkImplicit HidingImport
+    Hiding _ -> unless allowImplicit (checkImplicit HidingImport)
     Explicit [] -> unused
     Explicit declrefs -> checkExplicit declrefs
 
@@ -260,6 +270,7 @@ findUsedRefs env mni qualifierName names =
   let
     classRefs = TypeClassRef <$> mapMaybe (getClassName qualifierName) names
     valueRefs = ValueRef <$> mapMaybe (getIdentName qualifierName) names
+    typeOpRefs = TypeOpRef <$> mapMaybe (getTypeOpName qualifierName) names
     types = mapMaybe (getTypeName qualifierName) names
     dctors = mapMaybe (matchDctor qualifierName) names
     typesWithDctors = reconstructTypeRefs dctors
@@ -267,7 +278,7 @@ findUsedRefs env mni qualifierName names =
     typesRefs
       = map (flip TypeRef (Just [])) typesWithoutDctors
       ++ map (\(ty, ds) -> TypeRef ty (Just ds)) (M.toList typesWithDctors)
-  in classRefs ++ typesRefs ++ valueRefs
+  in classRefs ++ typeOpRefs ++ typesRefs ++ valueRefs
 
   where
 
@@ -304,6 +315,7 @@ matchName _ _ _ = Nothing
 extractQualName :: Name -> Maybe ModuleName
 extractQualName (IdentName (Qualified q _)) = q
 extractQualName (TyName (Qualified q _)) = q
+extractQualName (TyOpName (Qualified q _)) = q
 extractQualName (TyClassName (Qualified q _)) = q
 extractQualName (DctorName (Qualified q _)) = q
 

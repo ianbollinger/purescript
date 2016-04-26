@@ -122,12 +122,13 @@ parseFixityDeclaration :: TokenParser Declaration
 parseFixityDeclaration = do
   fixity <- parseFixity
   indented
-  alias <- P.optionMaybe $ aliased <* reserved "as"
+  alias <- P.optionMaybe $ parseQualified aliased <* reserved "as"
   name <- symbol
   return $ FixityDeclaration fixity name alias
   where
-  aliased = (Left <$> parseQualified (Ident <$> identifier))
-        <|> (Right <$> parseQualified (ProperName <$> uname))
+  aliased = (AliasValue . Ident <$> identifier)
+        <|> (AliasConstructor <$> properName)
+        <|> reserved "type" *> (AliasType <$> properName)
 
 parseImportDeclaration :: TokenParser Declaration
 parseImportDeclaration = do
@@ -164,6 +165,7 @@ parseDeclarationRef =
     <|> parseProperRef
     <|> (TypeClassRef <$> (reserved "class" *> properName))
     <|> (ModuleRef <$> (indented *> reserved "module" *> moduleName))
+    <|> (TypeOpRef <$> (indented *> reserved "type" *> parens (Op <$> symbol)))
   where
   parseProperRef = do
     name <- properName
@@ -184,7 +186,6 @@ parseTypeClassDeclaration = do
     indented *> reserved "where"
     indented *> mark (P.many (same *> positioned parseTypeDeclaration))
   return $ TypeClassDeclaration className idents implies members
-  where
 
 parseConstraint :: TokenParser Constraint
 parseConstraint = (,) <$> parseQualified properName <*> P.many (noWildcards parseTypeAtom)
@@ -391,6 +392,7 @@ parseValueAtom = P.choice
                  , parseLet
                  , P.try $ Parens <$> parens parseValue
                  , parseOperatorSection
+                 , parseHole
                  ]
 
 -- |
@@ -405,6 +407,9 @@ parseOperatorSection = parens $ left <|> right
   where
   right = OperatorSection <$> parseInfixExpr <* indented <*> (Right <$> indexersAndAccessors)
   left = flip OperatorSection <$> (Left <$> indexersAndAccessors) <* indented <*> parseInfixExpr
+
+parseHole :: TokenParser Expr
+parseHole = Hole <$> holeLit
 
 parsePropertyUpdate :: TokenParser (String, Expr)
 parsePropertyUpdate = do
@@ -484,7 +489,7 @@ parseConstructorBinder :: TokenParser Binder
 parseConstructorBinder = ConstructorBinder <$> C.parseQualified C.properName <*> many (C.indented *> parseBinderNoParens)
 
 parseObjectBinder:: TokenParser Binder
-parseObjectBinder= LiteralBinder <$> parseObjectLiteral (C.indented *> parseIdentifierAndBinder)
+parseObjectBinder = LiteralBinder <$> parseObjectLiteral (C.indented *> parseIdentifierAndBinder)
 
 parseArrayBinder :: TokenParser Binder
 parseArrayBinder = LiteralBinder <$> parseArrayLiteral (C.indented *> parseBinder)

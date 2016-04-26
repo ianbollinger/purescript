@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternGuards #-}
 
 -- |
 -- The top-level type checker, which checks all declarations in a module.
@@ -191,23 +192,19 @@ typeCheckAll moduleName _ ds = traverse go ds <* traverse_ checkFixities ds
   go :: Declaration -> m Declaration
   go (DataDeclaration dtype name args dctors) = do
     warnAndRethrow (addHint (ErrorInTypeConstructor name)) $ do
-      when (dtype == Newtype) $ checkNewtype dctors
+      when (dtype == Newtype) $ checkNewtype name dctors
       checkDuplicateTypeArguments $ map fst args
       ctorKind <- kindsOf True moduleName name args (concatMap snd dctors)
       let args' = args `withKinds` ctorKind
       addDataType moduleName dtype name args' dctors ctorKind
     return $ DataDeclaration dtype name args dctors
-    where
-    checkNewtype :: [(ProperName 'ConstructorName, [Type])] -> m ()
-    checkNewtype [(_, [_])] = return ()
-    checkNewtype [(_, _)] = throwError . errorMessage $ InvalidNewtype name
-    checkNewtype _ = throwError . errorMessage $ InvalidNewtype name
   go (d@(DataBindingGroupDeclaration tys)) = do
     warnAndRethrow (addHint ErrorInDataBindingGroup) $ do
       let syns = mapMaybe toTypeSynonym tys
       let dataDecls = mapMaybe toDataDecl tys
       (syn_ks, data_ks) <- kindsOfAll moduleName syns (map (\(_, name, args, dctors) -> (name, args, concatMap snd dctors)) dataDecls)
       for_ (zip dataDecls data_ks) $ \((dtype, name, args, dctors), ctorKind) -> do
+        when (dtype == Newtype) $ checkNewtype name dctors
         checkDuplicateTypeArguments $ map fst args
         let args' = args `withKinds` ctorKind
         addDataType moduleName dtype name args' dctors ctorKind
@@ -234,7 +231,7 @@ typeCheckAll moduleName _ ds = traverse go ds <* traverse_ checkFixities ds
   go (ValueDeclaration name nameKind [] (Right val)) =
     warnAndRethrow (addHint (ErrorInValueDeclaration name)) $ do
       valueIsNotDefined moduleName name
-      [(_, (val', ty))] <- typesOf moduleName [(name, val)]
+      [(_, (val', ty))] <- typesOf NonRecursiveBindingGroup moduleName [(name, val)]
       addValue moduleName name ty nameKind
       return $ ValueDeclaration name nameKind [] $ Right val'
   go ValueDeclaration{} = internalError "Binders were not desugared"
@@ -242,7 +239,7 @@ typeCheckAll moduleName _ ds = traverse go ds <* traverse_ checkFixities ds
     warnAndRethrow (addHint (ErrorInBindingGroup (map (\(ident, _, _) -> ident) vals))) $ do
       for_ (map (\(ident, _, _) -> ident) vals) $ \name ->
         valueIsNotDefined moduleName name
-      tys <- typesOf moduleName $ map (\(ident, _, ty) -> (ident, ty)) vals
+      tys <- typesOf RecursiveBindingGroup moduleName $ map (\(ident, _, ty) -> (ident, ty)) vals
       vals' <- forM [ (name, val, nameKind, ty)
                     | (name, nameKind, _) <- vals
                     , (name', (val, ty)) <- tys
@@ -281,15 +278,16 @@ typeCheckAll moduleName _ ds = traverse go ds <* traverse_ checkFixities ds
     warnAndRethrowWithPosition pos $ PositionedDeclaration pos com <$> go d
 
   checkFixities :: Declaration -> m ()
-  checkFixities (FixityDeclaration _ name (Just (Left alias))) = do
-    ty <- lookupVariable moduleName alias
+  checkFixities (FixityDeclaration _ name (Just (Qualified mn' (AliasValue ident)))) = do
+    ty <- lookupVariable moduleName (Qualified mn' ident)
     addValue moduleName (Op name) ty Public
-  checkFixities (FixityDeclaration _ name (Just (Right alias))) = do
+  checkFixities (FixityDeclaration _ name (Just (Qualified mn' (AliasConstructor ctor)))) = do
     env <- getEnv
+    let alias = Qualified mn' ctor
     case M.lookup alias (dataConstructors env) of
       Nothing -> throwError . errorMessage $ UnknownDataConstructor alias Nothing
       Just (_, _, ty, _) -> addValue moduleName (Op name) ty Public
-  checkFixities (FixityDeclaration _ name _) = do
+  checkFixities (FixityDeclaration _ name Nothing) = do
     env <- getEnv
     guardWith (errorMessage (OrphanFixityDeclaration name)) $ M.member (moduleName, Op name) $ names env
   checkFixities (PositionedDeclaration pos _ d) =
@@ -326,6 +324,10 @@ typeCheckAll moduleName _ ds = traverse go ds <* traverse_ checkFixities ds
     checkType (TypeApp t1 _) = checkType t1
     checkType _ = internalError "Invalid type in instance in checkOrphanInstance"
   checkOrphanInstance _ _ _ = internalError "Unqualified class name in checkOrphanInstance"
+
+  checkNewtype :: ProperName 'TypeName -> [(ProperName 'ConstructorName, [Type])] -> m ()
+  checkNewtype _ [(_, [_])] = return ()
+  checkNewtype name _ = throwError . errorMessage $ InvalidNewtype name
 
   -- |
   -- This function adds the argument kinds for a type constructor so that they may appear in the externs file,
@@ -437,7 +439,7 @@ typeCheckModule (Module ss coms mn decls (Just exps)) = warnAndRethrow (addHint 
 
   checkNonAliasesAreExported :: [ProperName 'ConstructorName] -> DeclarationRef -> m ()
   checkNonAliasesAreExported exportedDctors dr@(ValueRef (Op name)) =
-    case listToMaybe (mapMaybe getAlias decls) of
+    case listToMaybe (mapMaybe (getAlias getValueAlias name) decls) of
       Just (Left ident) ->
         unless (ValueRef ident `elem` exps) $
           throwError . errorMessage $ TransitiveExportError dr [ValueRef ident]
@@ -445,16 +447,23 @@ typeCheckModule (Module ss coms mn decls (Just exps)) = warnAndRethrow (addHint 
         unless (ctor `elem` exportedDctors) $
           throwError . errorMessage $ TransitiveDctorExportError dr ctor
       _ -> return ()
+  checkNonAliasesAreExported _ dr@(TypeOpRef (Op name)) =
+    case listToMaybe (mapMaybe (getAlias getTypeAlias name) decls) of
+      Just ty ->
+        unless (any (isTypeRefFor ty) exps) $
+          throwError . errorMessage $ TransitiveExportError dr [TypeRef ty Nothing]
+      _ -> return ()
     where
-    getAlias :: Declaration -> Maybe (Either Ident (ProperName 'ConstructorName))
-    getAlias (PositionedDeclaration _ _ d) = getAlias d
-    getAlias (FixityDeclaration _ name' (Just alias)) | name == name' =
-      case alias of
-        Left (Qualified (Just mn') ident) | mn == mn' -> Just (Left ident)
-        Right (Qualified (Just mn') ctor) | mn == mn' -> Just (Right ctor)
-        _ -> Nothing
-    getAlias _ = Nothing
+    isTypeRefFor :: ProperName 'TypeName -> DeclarationRef -> Bool
+    isTypeRefFor ty (TypeRef ty' _) = ty == ty'
+    isTypeRefFor _ _ = False
   checkNonAliasesAreExported _ _ = return ()
+
+  getAlias :: (FixityAlias -> Maybe a) -> String -> Declaration -> Maybe a
+  getAlias match name (PositionedDeclaration _ _ d) = getAlias match name d
+  getAlias match name (FixityDeclaration _ name' (Just (Qualified (Just mn') a)))
+    | Just alias <- match a, name == name' && mn == mn' = Just alias
+  getAlias _ _ _ = Nothing
 
   exportedDataConstructors :: [DeclarationRef] -> [ProperName 'ConstructorName]
   exportedDataConstructors = foldMap extractCtor

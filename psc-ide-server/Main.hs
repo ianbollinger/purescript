@@ -1,9 +1,24 @@
+-----------------------------------------------------------------------------
+--
+-- Module      : Main
+-- Description : The server accepting commands for psc-ide
+-- Copyright   : Christoph Hegemann 2016
+-- License     : MIT (http://opensource.org/licenses/MIT)
+--
+-- Maintainer  : Christoph Hegemann <christoph.hegemann1337@gmail.com>
+-- Stability   : experimental
+--
+-- |
+-- The server accepting commands for psc-ide
+-----------------------------------------------------------------------------
+
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE TemplateHaskell       #-}
+
 module Main where
 
 import           Prelude                           ()
@@ -21,7 +36,7 @@ import qualified Data.Text                         as T
 import qualified Data.Text.IO                      as T
 import           Data.Version                      (showVersion)
 import           Language.PureScript.Ide
-import           Language.PureScript.Ide.CodecJSON
+import           Language.PureScript.Ide.Util
 import           Language.PureScript.Ide.Error
 import           Language.PureScript.Ide.Types
 import           Language.PureScript.Ide.Watcher
@@ -67,7 +82,17 @@ main = do
   maybe (pure ()) setCurrentDirectory dir
   serverState <- newTVarIO emptyPscIdeState
   cwd <- getCurrentDirectory
-  _ <- forkFinally (watcher serverState (cwd </> outputPath)) print
+  let fullOutputPath = cwd </> outputPath
+
+  doesDirectoryExist fullOutputPath
+    >>= flip unless
+    (do putStrLn ("Your output directory didn't exist. I'll create it at: " <> fullOutputPath)
+        createDirectory fullOutputPath
+        putStrLn "This usually means you didn't compile your project yet."
+        putStrLn "psc-ide needs you to compile your project (for example by running pulp build)"
+    )
+
+  _ <- forkFinally (watcher serverState fullOutputPath) print
   let conf =
         Configuration
         {
@@ -110,7 +135,7 @@ startServer port env = withSocketsDo $ do
           case decodeT cmd of
             Just cmd' -> do
               result <- runExceptT (handleCommand cmd')
-              $(logDebug) ("Answer was: " <> T.pack (show result))
+              -- $(logDebug) ("Answer was: " <> T.pack (show result))
               liftIO (hFlush stdout)
               case result of
                 -- What function can I use to clean this up?

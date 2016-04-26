@@ -12,9 +12,10 @@ module Language.PureScript.Sugar.Names.Imports
 import Prelude ()
 import Prelude.Compat
 
-import Data.List (find, delete, (\\))
-import Data.Maybe (fromMaybe, isJust, isNothing, fromJust)
 import Data.Foldable (traverse_, for_)
+import Data.Function (on)
+import Data.List (find, sortBy, groupBy, (\\))
+import Data.Maybe (fromMaybe, isNothing, fromJust)
 import Data.Traversable (for)
 
 import Control.Arrow (first)
@@ -68,29 +69,23 @@ resolveImports env (Module ss coms currentModule decls exps) =
 
     for_ (M.toList imports) $ \(mn, imps) -> do
 
-      -- Better ordering for the warnings: the list is in last-import-first
-      -- order, but we want the first appearence of an import to be the primary,
-      -- and warnings to appear for later imports
-      let imps' = reverse imps
+      warned <- foldM (checkDuplicateImports mn) [] (selfCartesianSubset imps)
 
-      warned <- foldM (checkDuplicateImports mn) [] (selfCartesianSubset imps')
+      let unwarned = imps \\ warned
+          duplicates
+            = join
+            . map tail
+            . filter ((> 1) . length)
+            . groupBy ((==) `on` defQual)
+            . sortBy (compare `on` defQual)
+            $ unwarned
 
-      let unqual = filter (\(_, _, q) -> isJust q) (imps' \\ warned)
+      warned' <-
+        for duplicates $ \i@(pos, _, _) -> do
+          warn pos $ DuplicateSelectiveImport mn
+          return i
 
-      warned' <- (warned ++) <$>
-        if (length unqual < 2)
-        then return []
-        else case find (\(_, typ, _) -> isImplicit typ) unqual of
-          Just i ->
-            for (delete i unqual) $ \i'@(pos, typ, _) -> do
-              warn pos $ RedundantUnqualifiedImport mn typ
-              return i'
-          Nothing ->
-            for (tail unqual) $ \i@(pos, _, _) -> do
-              warn pos $ DuplicateSelectiveImport mn
-              return i
-
-      for_ (imps' \\ warned') $ \(pos, typ, _) ->
+      for_ (imps \\ (warned ++ warned')) $ \(pos, typ, _) ->
         let (dupeRefs, dupeDctors) = findDuplicateRefs $ case typ of
               Explicit refs -> refs
               Hiding refs -> refs
@@ -102,9 +97,13 @@ resolveImports env (Module ss coms currentModule decls exps) =
     let imports' = M.map (map (\(ss', dt, mmn) -> (ss', Just dt, mmn))) imports
         scope = M.insert currentModule [(Nothing, Nothing, Nothing)] imports'
     resolved <- foldM (resolveModuleImport env) nullImports (M.toList scope)
+
     return (Module ss coms currentModule decls' exps, resolved)
 
   where
+  defQual :: ImportDef -> Maybe ModuleName
+  defQual (_, _, q) = q
+
   selfCartesianSubset :: [a] -> [(a, a)]
   selfCartesianSubset (x : xs) = [(x, y) | y <- xs] ++ selfCartesianSubset xs
   selfCartesianSubset [] = []
@@ -120,6 +119,7 @@ resolveImports env (Module ss coms currentModule decls exps) =
   warnDupeRefs :: Maybe SourceSpan -> [DeclarationRef] -> m ()
   warnDupeRefs pos = traverse_ $ \case
     TypeRef name _ -> warnDupe pos $ "type " ++ runProperName name
+    TypeOpRef name -> warnDupe pos $ "type operator " ++ runIdent name
     ValueRef name -> warnDupe pos $ "value " ++ runIdent name
     TypeClassRef name -> warnDupe pos $ "class " ++ runProperName name
     ModuleRef name -> warnDupe pos $ "module " ++ runModuleName name
@@ -205,6 +205,7 @@ resolveImport importModule exps imps impQual = resolveByType
     imps' <- checkRefs True refs >> importAll (importNonHidden refs)
     let isEmptyImport
            = M.null (importedTypes imps')
+          && M.null (importedTypeOps imps')
           && M.null (importedDataConstructors imps')
           && M.null (importedTypeClasses imps')
           && M.null (importedValues imps')
@@ -223,6 +224,8 @@ resolveImport importModule exps imps impQual = resolveByType
       checkImportExists UnknownImportType ((fst . fst) `map` exportedTypes exps) name
       let allDctors = fst `map` allExportedDataConstructors name
       maybe (return ()) (traverse_ $ checkDctorExists name allDctors) dctors
+    check (TypeOpRef name) =
+      checkImportExists UnknownImportTypeOp (fst `map` exportedTypeOps exps) name
     check (TypeClassRef name) =
       checkImportExists UnknownImportTypeClass (fst `map` exportedTypeClasses exps) name
     check (ModuleRef name) | isHiding =
@@ -269,8 +272,9 @@ resolveImport importModule exps imps impQual = resolveByType
   importAll :: (Imports -> DeclarationRef -> m Imports) -> m Imports
   importAll importer = do
     imp' <- foldM (\m ((name, dctors), _) -> importer m (TypeRef name (Just dctors))) imps (exportedTypes exps)
-    imp'' <- foldM (\m (name, _) -> importer m (ValueRef name)) imp' (exportedValues exps)
-    foldM (\m (name, _) -> importer m (TypeClassRef name)) imp'' (exportedTypeClasses exps)
+    imp'' <- foldM (\m (name, _) -> importer m (TypeOpRef name)) imp' (exportedTypeOps exps)
+    imp''' <- foldM (\m (name, _) -> importer m (ValueRef name)) imp'' (exportedValues exps)
+    foldM (\m (name, _) -> importer m (TypeClassRef name)) imp''' (exportedTypeClasses exps)
 
   importRef :: ImportProvenance -> Imports -> DeclarationRef -> m Imports
   importRef prov imp (PositionedDeclarationRef pos _ r) =
@@ -288,6 +292,9 @@ resolveImport importModule exps imps impQual = resolveByType
     when (null dctorNames && isNothing dctors) . tell . errorMessage $ MisleadingEmptyTypeImport importModule name
     let dctors' = foldl (\m d -> updateImports m exportedDctors d prov) (importedDataConstructors imp) (fromMaybe dctorNames dctors)
     return $ imp { importedTypes = types', importedDataConstructors = dctors' }
+  importRef prov imp (TypeOpRef name) = do
+    let ops' = updateImports (importedTypeOps imp) (exportedTypeOps exps) name prov
+    return $ imp { importedTypeOps = ops' }
   importRef prov imp (TypeClassRef name) = do
     let typeClasses' = updateImports (importedTypeClasses imp) (exportedTypeClasses exps) name prov
     return $ imp { importedTypeClasses = typeClasses' }

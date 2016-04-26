@@ -7,9 +7,10 @@
 -- |
 -- This module implements the type checker
 --
-module Language.PureScript.TypeChecker.Types (
-    typesOf
-) where
+module Language.PureScript.TypeChecker.Types
+  ( BindingGroupType(..)
+  , typesOf
+  ) where
 
 {-
   The following functions represent the corresponding type checking judgements:
@@ -59,15 +60,21 @@ import Language.PureScript.TypeChecker.Unify
 import Language.PureScript.TypeClassDictionaries
 import Language.PureScript.Types
 
+data BindingGroupType
+  = RecursiveBindingGroup
+  | NonRecursiveBindingGroup
+  deriving (Show, Eq, Ord)
+
 -- | Infer the types of multiple mutually-recursive values, and return elaborated values including
 -- type class dictionaries and type annotations.
 typesOf ::
   (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m) =>
+  BindingGroupType ->
   ModuleName ->
   [(Ident, Expr)] ->
   m [(Ident, (Expr, Type))]
-typesOf moduleName vals = do
-  tys <- fmap tidyUp . liftUnifyWarnings replace $ do
+typesOf bindingGroupType moduleName vals = do
+  tys <- fmap tidyUp . escalateWarningWhen isHoleError . liftUnifyWarnings replace $ do
     (untyped, typed, dict, untypedDict) <- typeDictionaryForBindingGroup moduleName vals
     ds1 <- parU typed $ \e -> checkTypedBindingGroupElement moduleName e dict
     ds2 <- forM untyped $ \e -> typeForBindingGroupElement e dict untypedDict
@@ -79,30 +86,50 @@ typesOf moduleName vals = do
     let unsolvedTypeVars = nub $ unknownsInType ty
     -- Generalize and constrain the type
     let generalized = generalize unsolved ty
-    -- Make sure any unsolved type constraints only use type variables which appear
-    -- unknown in the inferred type.
+
     when shouldGeneralize $ do
+      -- Show the inferred type in a warning
       tell . errorMessage $ MissingTypeDeclaration ident generalized
+      -- For non-recursive binding groups, can generalize over constraints.
+      -- For recursive binding groups, we throw an error here for now.
+      when (bindingGroupType == RecursiveBindingGroup && not (null unsolved))
+        . throwError
+        . errorMessage
+        $ CannotGeneralizeRecursiveFunction ident generalized
+      -- Make sure any unsolved type constraints only use type variables which appear
+      -- unknown in the inferred type.
       forM_ unsolved $ \(_, (className, classTys)) -> do
         let constraintTypeVars = nub $ foldMap unknownsInType classTys
         when (any (`notElem` unsolvedTypeVars) constraintTypeVars) $
           throwError . errorMessage $ NoInstanceFound className classTys
+
     -- Check skolem variables did not escape their scope
     skolemEscapeCheck val'
     -- Check rows do not contain duplicate labels
     checkDuplicateLabels val'
     return (ident, (foldr (Abs . Left . fst) val' unsolved, generalized))
   where
+
   -- | Generalize type vars using forall and add inferred constraints
   generalize unsolved = varIfUnknown . constrain unsolved
+
   -- | Add any unsolved constraints
   constrain [] = id
   constrain cs = ConstrainedType (map snd cs)
+
   -- Apply the substitution that was returned from runUnify to both types and (type-annotated) values
   tidyUp (ts, sub) = map (\(b, (i, (val, ty))) -> (b, (i, (overTypes (substituteType sub) val, substituteType sub ty)))) ts
+
   -- Replace all the wildcards types with their inferred types
-  replace sub (ErrorMessage hints (WildcardInferredType ty)) = ErrorMessage hints . WildcardInferredType $ substituteType sub ty
+  replace sub (ErrorMessage hints (WildcardInferredType ty)) =
+    ErrorMessage hints . WildcardInferredType $ substituteType sub ty
+  replace sub (ErrorMessage hints (HoleInferredType name ty)) =
+    ErrorMessage hints . HoleInferredType name $ substituteType sub ty
   replace _ em = em
+
+  isHoleError :: ErrorMessage -> Bool
+  isHoleError (ErrorMessage _ HoleInferredType{}) = True
+  isHoleError _ = False
 
 type TypeData = M.Map (ModuleName, Ident) (Type, NameKind, NameVisibility)
 
@@ -179,7 +206,7 @@ overTypes f = let (_, f', _) = everywhereOnValues id g id in f'
   g (TypedValue checkTy val t) = TypedValue checkTy val (f t)
   g (TypeClassDictionary (nm, tys) sco) = TypeClassDictionary (nm, map f tys) sco
   g other = other
-  
+
 -- | Check the kind of a type, failing if it is not of kind *.
 checkTypeKind ::
   (MonadState CheckState m, MonadError MultipleErrors m) =>
@@ -283,8 +310,10 @@ infer' (IfThenElse cond th el) = do
   cond' <- check cond tyBoolean
   th'@(TypedValue _ _ thTy) <- infer th
   el'@(TypedValue _ _ elTy) <- infer el
-  unifyTypes thTy elTy
-  return $ TypedValue True (IfThenElse cond' th' el') thTy
+  (th'', thTy') <- instantiatePolyTypeWithUnknowns th' thTy
+  (el'', elTy') <- instantiatePolyTypeWithUnknowns el' elTy
+  unifyTypes thTy' elTy'
+  return $ TypedValue True (IfThenElse cond' th'' el'') thTy'
 infer' (Let ds val) = do
   (ds', val'@(TypedValue _ _ valTy)) <- inferLetBinding [] ds val infer
   return $ TypedValue True (Let ds' val') valTy
@@ -298,10 +327,14 @@ infer' (TypedValue checkType val ty) = do
   ty' <- introduceSkolemScope <=< replaceAllTypeSynonyms <=< replaceTypeWildcards $ ty
   val' <- if checkType then withScopedTypeVars moduleName args (check val ty') else return val
   return $ TypedValue True val' ty'
+infer' (Hole name) = do
+  ty <- freshType
+  tell . errorMessage $ HoleInferredType name ty
+  return $ TypedValue True (Hole name) ty
 infer' (PositionedValue pos c val) = warnAndRethrowWithPosition pos $ do
   TypedValue t v ty <- infer' val
   return $ TypedValue t (PositionedValue pos c v) ty
-infer' _ = internalError "Invalid argument to infer"
+infer' v = internalError $ "Invalid argument to infer: " ++ show v
 
 inferLetBinding ::
   (MonadSupply m, MonadState CheckState m, MonadError MultipleErrors m, MonadWriter MultipleErrors m) =>

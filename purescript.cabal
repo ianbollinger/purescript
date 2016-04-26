@@ -1,5 +1,5 @@
 name: purescript
-version: 0.8.2.0
+version: 0.8.5.0
 cabal-version: >=1.8
 build-type: Simple
 license: MIT
@@ -35,6 +35,9 @@ extra-source-files: examples/passing/*.purs
                   , tests/support/flattened/*.purs
                   , tests/support/flattened/*.js
                   , tests/support/psci/*.purs
+                  , tests/support/pscide/src/*.purs
+                  , tests/support/pscide/src/*.js
+                  , tests/support/pscide/src/*.fail
                   , stack.yaml
                   , stack-lts-5.yaml
                   , stack-nightly.yaml
@@ -68,12 +71,12 @@ library
                    boxes >= 0.1.4 && < 0.2.0,
                    aeson >= 0.8 && < 0.12,
                    vector -any,
-                   bower-json >= 0.7,
+                   bower-json >= 0.8,
                    aeson-better-errors >= 0.8,
                    bytestring -any,
                    text -any,
                    split -any,
-                   language-javascript == 0.5.*,
+                   language-javascript == 0.6.*,
                    syb -any,
                    Glob >= 0.7 && < 0.8,
                    process >= 1.2.0 && < 1.5,
@@ -88,7 +91,8 @@ library
                    monad-logger >= 0.3 && < 0.4,
                    pipes >= 4.0.0 && < 4.2.0 ,
                    pipes-http -any,
-                   http-types -any
+                   http-types -any,
+                   spdx == 0.2.*
 
     exposed-modules: Language.PureScript
                      Language.PureScript.AST
@@ -125,6 +129,7 @@ library
                      Language.PureScript.Comments
                      Language.PureScript.Environment
                      Language.PureScript.Errors
+                     Language.PureScript.Errors.JSON
                      Language.PureScript.Kinds
                      Language.PureScript.Linter
                      Language.PureScript.Linter.Exhaustive
@@ -161,6 +166,7 @@ library
                      Language.PureScript.Sugar.Operators.Common
                      Language.PureScript.Sugar.Operators.Expr
                      Language.PureScript.Sugar.Operators.Binders
+                     Language.PureScript.Sugar.Operators.Types
                      Language.PureScript.Sugar.TypeClasses
                      Language.PureScript.Sugar.TypeClasses.Deriving
                      Language.PureScript.Sugar.TypeDeclarations
@@ -200,7 +206,6 @@ library
                      Language.PureScript.Ide.Command
                      Language.PureScript.Ide.Externs
                      Language.PureScript.Ide.Error
-                     Language.PureScript.Ide.CodecJSON
                      Language.PureScript.Ide.Pursuit
                      Language.PureScript.Ide.Completion
                      Language.PureScript.Ide.Matcher
@@ -211,6 +216,9 @@ library
                      Language.PureScript.Ide.SourceFile
                      Language.PureScript.Ide.Watcher
                      Language.PureScript.Ide.Reexports
+                     Language.PureScript.Ide.Imports
+                     Language.PureScript.Ide.Util
+                     Language.PureScript.Ide.Rebuild
 
                      Control.Monad.Logger
                      Control.Monad.Supply
@@ -234,7 +242,7 @@ executable psc
     main-is: Main.hs
     buildable: True
     hs-source-dirs: psc
-    other-modules: JSON, Paths_purescript
+    other-modules: Paths_purescript
     ghc-options: -Wall -O2 -fno-warn-unused-do-bind -threaded -rtsopts "-with-rtsopts=-N"
 
 executable psci
@@ -324,7 +332,7 @@ executable psc-bundle
 
 executable psc-ide-server
   main-is:             Main.hs
-  other-modules:
+  other-modules:       Paths_purescript
   other-extensions:
   build-depends:       base >=4 && <5
                      , purescript -any
@@ -344,7 +352,7 @@ executable psc-ide-server
 
 executable psc-ide-client
   main-is:             Main.hs
-  other-modules:
+  other-modules:       Paths_purescript
   other-extensions:
   build-depends:       base >=4 && <5
                      , mtl -any
@@ -361,7 +369,8 @@ test-suite tests
                    transformers -any, process -any, transformers-compat -any, time -any,
                    Glob -any, aeson-better-errors -any, bytestring -any, aeson -any,
                    base-compat -any, haskeline >= 0.7.0.0, optparse-applicative -any,
-                   boxes -any, HUnit -any, hspec -any, hspec-discover -any, stm -any, text -any
+                   boxes -any, HUnit -any, hspec -any, hspec-discover -any, stm -any, text -any,
+                   vector -any, utf8-string -any
     ghc-options: -Wall
     type: exitcode-stdio-1.0
     main-is: Main.hs
@@ -372,5 +381,17 @@ test-suite tests
                    TestPsci
                    TestPscIde
                    PscIdeSpec
+                   Language.PureScript.Ide.FilterSpec
+                   Language.PureScript.Ide.ImportsSpec
+                   Language.PureScript.Ide.Imports.IntegrationSpec
+                   Language.PureScript.Ide.Integration
+                   Language.PureScript.Ide.MatcherSpec
+                   Language.PureScript.Ide.RebuildSpec
+                   Language.PureScript.Ide.ReexportsSpec
+                   Language.PureScript.IdeSpec
+                   PSCi.Completion
+                   PSCi.Directive
+                   PSCi.Module
+                   PSCi.Types
     buildable: True
     hs-source-dirs: tests psci

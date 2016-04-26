@@ -6,6 +6,7 @@
 module Language.PureScript.Publish
   ( preparePackage
   , preparePackage'
+  , unsafePreparePackage
   , PrepareM()
   , runPrepareM
   , warn
@@ -17,7 +18,7 @@ module Language.PureScript.Publish
   , getGitWorkingTreeStatus
   , checkCleanWorkingTree
   , getVersionFromGitTag
-  , getBowerInfo
+  , getBowerRepositoryInfo
   , getModulesAndBookmarks
   , getResolvedDependencies
   ) where
@@ -38,6 +39,7 @@ import Data.Aeson.BetterErrors
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
+import qualified Data.SPDX as SPDX
 
 import Control.Category ((>>>))
 import Control.Arrow ((***))
@@ -79,11 +81,16 @@ defaultPublishOptions = PublishOptions
 
 -- | Attempt to retrieve package metadata from the current directory.
 -- Calls exitFailure if no package metadata could be retrieved.
-preparePackage :: PublishOptions -> IO D.UploadedPackage
+unsafePreparePackage :: PublishOptions -> IO D.UploadedPackage
+unsafePreparePackage opts = either (\e -> printError e >> exitFailure) pure =<< preparePackage opts
+
+-- | Attempt to retrieve package metadata from the current directory.
+-- Returns a PackageError on failure
+preparePackage :: PublishOptions -> IO (Either PackageError D.UploadedPackage)
 preparePackage opts =
   runPrepareM (preparePackage' opts)
-    >>= either (\e -> printError e >> exitFailure)
-               handleWarnings
+    >>= either (pure . Left) (fmap Right . handleWarnings)
+
   where
   handleWarnings (result, warns) = do
     printWarnings warns
@@ -121,17 +128,20 @@ otherError = throwError . OtherError
 catchLeft :: Applicative f => Either a b -> (a -> f b) -> f b
 catchLeft a f = either f pure a
 
+unlessM :: Monad m => m Bool -> m () -> m ()
+unlessM cond act = cond >>= flip unless act
+
 preparePackage' :: PublishOptions -> PrepareM D.UploadedPackage
 preparePackage' opts = do
-  exists <- liftIO (doesFileExist "bower.json")
-  unless exists (userError BowerJSONNotFound)
-
+  unlessM (liftIO (doesFileExist "bower.json")) (userError BowerJSONNotFound)
   checkCleanWorkingTree opts
 
   pkgMeta <- liftIO (Bower.decodeFile "bower.json")
                     >>= flip catchLeft (userError . CouldntDecodeBowerJSON)
+  checkLicense pkgMeta
+
   (pkgVersionTag, pkgVersion) <- publishGetVersion opts
-  pkgGithub                   <- getBowerInfo pkgMeta
+  pkgGithub                   <- getBowerRepositoryInfo pkgMeta
   (pkgBookmarks, pkgModules)  <- getModulesAndBookmarks
 
   let declaredDeps = map fst (bowerDependencies pkgMeta ++
@@ -193,8 +203,8 @@ getVersionFromGitTag = do
   dropPrefix prefix str =
     fromMaybe str (stripPrefix prefix str)
 
-getBowerInfo :: PackageMeta -> PrepareM (D.GithubUser, D.GithubRepo)
-getBowerInfo = either (userError . BadRepositoryField) return . tryExtract
+getBowerRepositoryInfo :: PackageMeta -> PrepareM (D.GithubUser, D.GithubRepo)
+getBowerRepositoryInfo = either (userError . BadRepositoryField) return . tryExtract
   where
   tryExtract pkgMeta =
     case bowerRepository pkgMeta of
@@ -203,6 +213,17 @@ getBowerInfo = either (userError . BadRepositoryField) return . tryExtract
         unless (repositoryType == "git")
           (Left (BadRepositoryType repositoryType))
         maybe (Left NotOnGithub) Right (extractGithub repositoryUrl)
+
+checkLicense :: PackageMeta -> PrepareM ()
+checkLicense pkgMeta =
+  unless (any isValidSPDX (bowerLicense pkgMeta))
+    (userError NoLicenseSpecified)
+
+-- |
+-- Check if a string is a valid SPDX license expression.
+--
+isValidSPDX :: String -> Bool
+isValidSPDX = (== 1) . length . SPDX.parseExpression
 
 extractGithub :: String -> Maybe (D.GithubUser, D.GithubRepo)
 extractGithub = stripGitHubPrefixes
