@@ -12,6 +12,7 @@
 --
 -----------------------------------------------------------------------------
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -26,19 +27,9 @@ import Control.Monad
 import Control.Monad.Error.Class (MonadError(..))
 --import Control.Monad.Writer.Strict
 
-import Data.List (isSuffixOf, partition, intersperse)
-import Data.Version (showVersion)
-import qualified Data.Map as M
-import qualified Data.Aeson as A
-import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.UTF8 as BU8
+import Data.List (intersperse)
 
 --import Options.Applicative ((<>))
-
-import System.Exit (exitSuccess, exitFailure)
-import System.IO (hPutStrLn, stderr)
-import System.IO.UTF8
-import System.FilePath.Glob (glob)
 
 import Text.PrettyPrint.Leijen as PP
 
@@ -50,13 +41,12 @@ import Text.PrettyPrint.Leijen as PP
 --import Language.PureScript.Make
 import Language.PureScript.Environment (DataDeclType (..))
 import Language.PureScript.Names
-import Language.PureScript.Parser.Lexer
 import Language.PureScript.Parser.Declarations
-import Language.PureScript.Errors as P hiding ((<>))
+import Language.PureScript.Errors as P
 import Language.PureScript.Types (Type (..))
 import Language.PureScript.AST.Literals (Literal (..))
 import Language.PureScript.AST.SourcePos (SourcePos, SourceSpan)
-import Language.PureScript.AST.Declarations (Module (Module), Declaration(..), Expr (..))
+import Language.PureScript.AST.Declarations (Module (Module), Declaration(..), Expr (..), ImportDeclarationType (..), DeclarationRef (..))
 
 indentationLevel :: Int
 indentationLevel = 4
@@ -83,6 +73,26 @@ instance Pretty Ident where
     pretty (Ident i) = text i
     pretty (Op o) = text o
     pretty (GenIdent mstring integer) = text "genIdent"
+
+ppQualifiedImport :: Maybe ModuleName -> Doc
+ppQualifiedImport (Just m) = PP.space <> text "as" <+> pretty m
+ppQualifiedImport Nothing = PP.empty
+
+ppImportDeclarationType :: ImportDeclarationType -> Doc
+ppImportDeclarationType Implicit = PP.empty
+ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
+ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
+
+
+instance Pretty DeclarationRef where
+    pretty (TypeRef properName ns) = text "TypeRef"
+    --pretty (TypeOpRef ident) = text "TypeOpRef"
+    pretty (ValueRef ident) = text "ValueRef"
+    pretty (TypeClassRef properName) = text "TypeClassRef"
+    pretty (TypeInstanceRef ident) = text "TypeInstanceRef"
+    pretty (ModuleRef moduleName) = pretty moduleName
+    pretty (ProperRef ref) = text ref
+    pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = text "PositionedDeclarationRef"
 
 -- Language.PureScript.AST.Declarations
 instance Pretty Declaration where
@@ -112,7 +122,7 @@ instance Pretty Declaration where
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
     pretty (FixityDeclaration fixity string mqualified) = text "FixityDeclaration"
-    pretty (ImportDeclaration moduleName importDeclarationType mmoduleName bool) = text "import" <+> pretty moduleName
+    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName bool) = text "import" <+> pretty moduleName <> ppImportDeclarationType importDeclarationType<> ppQualifiedImport qualifiedModuleName
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclaration"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody) = text "instance" <+> pretty ident <+> text "TypeInstanceDeclaration"
     pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
