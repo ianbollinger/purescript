@@ -212,7 +212,7 @@ instance Pretty Expr where
     pretty (Parens expr) = parens $ pretty expr
     pretty (ObjectGetter s) = text "_." <> text s
     pretty (Accessor field expr) = pretty expr <> dot <> pretty field
-    pretty (ObjectUpdate expr ss) = text "ObjectUpdate"
+    pretty (ObjectUpdate o ps) = pretty o <+> text "{" <+> listify (map (\(key, val) -> text key <+> text "=" <+> pretty val) ps) <+> text "}"
     pretty (Abs (Left arg) val) = printAbs arg val True
     pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <> text " -> " <> pretty val
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
