@@ -5,16 +5,15 @@ import           Prelude             ()
 import           Prelude.Compat
 
 import           Control.Exception
-import           Data.Text           (Text)
-import qualified Data.Text           as T
-import qualified Data.Text.IO        as T
-import           Data.Version        (showVersion)
+import qualified Data.ByteString.Char8 as BS8
+import qualified Data.Text.IO          as T
+import           Data.Version          (showVersion)
 import           Network
 import           Options.Applicative
 import           System.Exit
 import           System.IO
 
-import qualified Paths_purescript    as Paths
+import qualified Paths_purescript      as Paths
 
 data Options = Options
   { optionsPort :: PortID
@@ -35,22 +34,13 @@ main = do
 client :: PortID -> IO ()
 client port = do
     h <-
-        connectTo "localhost" port `catch`
+        connectTo "127.0.0.1" port `catch`
         (\(SomeException e) ->
               putStrLn
                   ("Couldn't connect to psc-ide-server on port: " ++
                    show port ++ " Error: " ++ show e) >>
               exitFailure)
-    cmd <- T.getLine
-    -- Temporary fix for emacs windows bug
-    let cleanedCmd = removeSurroundingTicks cmd
-    --
-    T.hPutStrLn h cleanedCmd
-    res <- T.hGetLine h
-    putStrLn (T.unpack res)
+    T.hPutStrLn h =<< T.getLine
+    BS8.putStrLn =<< BS8.hGetLine h
     hFlush stdout
     hClose h
-
--- TODO: Fix this in the emacs plugin by using a real process over shellcommands
-removeSurroundingTicks :: Text -> Text
-removeSurroundingTicks = T.dropWhile (== '\'') . T.dropWhileEnd (== '\'')
