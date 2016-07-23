@@ -71,7 +71,6 @@ moduleNameSeparator = text "."
 -- Language.PureScript.Names
 instance Pretty Ident where
     pretty (Ident i) = text i
-    pretty (Op o) = text o
     pretty (GenIdent mstring integer) = text "genIdent"
 
 ppQualifiedImport :: Maybe ModuleName -> Doc
@@ -83,15 +82,16 @@ ppImportDeclarationType Implicit = PP.empty
 ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
-
+-- Language.PureScript.AST.Declarations
 instance Pretty DeclarationRef where
     pretty (TypeRef properName ns) = text "TypeRef"
-    --pretty (TypeOpRef ident) = text "TypeOpRef"
+    pretty (TypeOpRef (OpName opName)) = text "TypeOpRef"
     pretty (ValueRef ident) = pretty ident
+    pretty (ValueOpRef (OpName opName)) = text "ValueOpRef"
     pretty (TypeClassRef properName) = text "class" <+> pretty properName
     pretty (TypeInstanceRef ident) = text "TypeInstanceRef"
     pretty (ModuleRef moduleName) = pretty moduleName
-    pretty (ProperRef ref) = text ref
+    pretty (ReExportRef moduleName ref) = text "ReExportRef"
     pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = pretty declarationRef
 
 -- Language.PureScript.AST.Declarations
@@ -121,8 +121,8 @@ instance Pretty Declaration where
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
-    pretty (FixityDeclaration fixity string mqualified) = text "FixityDeclaration"
-    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName bool) = text "import" <+> pretty moduleName <> ppImportDeclarationType importDeclarationType<> ppQualifiedImport qualifiedModuleName
+    pretty (FixityDeclaration fixity) = text "FixityDeclaration"
+    pretty (ImportDeclaration moduleName importDeclarationType mModuleName) = text "ImportDeclaration" --text "import" <+> pretty moduleName <> ppImportDeclarationType importDeclarationType<> ppQualifiedImport qualifiedModuleName
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclaration"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody) = text "instance" <+> pretty ident <+> text "TypeInstanceDeclaration"
     pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
@@ -134,7 +134,7 @@ pprintModule (Module sourceSpan comments moduleName declarations _) =
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
 -- Language.PureScript.Types
 instance Pretty Type where
-    pretty TypeWildcard = text "_"
+    pretty (TypeWildcard sourceSpan) = text "_"
     pretty (TypeVar var) = text var
     pretty (PrettyPrintObject row) = text "ROW" --prettyPrintRowWith '{' '}' row
     pretty (TypeConstructor ctor) = text $ runProperName $ disqualify ctor
@@ -151,13 +151,13 @@ instance Pretty Expr where
     pretty (UnaryMinus expr) = text "-" <> pretty expr
     pretty (BinaryNoParens expr1 expr2 expr3) = pretty "BinaryNoParens"
     pretty (Parens expr) = text "(" <> pretty expr <> text ")"
-    pretty (OperatorSection expr lr) = pretty "OperatorSection"
     pretty (ObjectGetter s) = text "_." <> text s
     pretty (Accessor s expr) = text "Accessor"
     pretty (ObjectUpdate expr ss) = text "ObjectUpdate"
     pretty (Abs l expr) = pretty "Abs"
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
+    pretty (Op o) = text "Op"
     pretty (IfThenElse expr1 expr2 expr3) = text "if" <+> pretty expr1 PP.<$> text "then" <+> pretty expr2 PP.<$> text "else" <+> pretty expr3
     pretty (Constructor qualified) = text "Constructor"
     pretty (Case exprs caseAlternatives) = text "Case"
@@ -169,6 +169,7 @@ instance Pretty Expr where
     pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
     pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
     pretty AnonymousArgument = text "AnonymousArgument"
+    pretty (Hole hole) = text hole
     pretty (PositionedValue sourceSpan comments expr) = pretty expr
 
 -- Language.PureScript.Names
@@ -192,7 +193,7 @@ instance Pretty a => Pretty (Literal a) where
 
 main :: IO ()
 main = do
-    file <- readFile "C:/Users/Nicolas/Documents/Programming/PureScript/BA-UI/src/Main.purs"
+    file <- readFile "C:/Users/Nicolas/Documents/Programming/BA/BA-UI/src/Main.purs"
 
     putStrLn file
     putStrLn "-----------"
@@ -203,4 +204,4 @@ main = do
             --putStrLn "------------"
             putStrLn $ displayS (renderCompact $ vsep $ fmap (\(_, m) -> pprintModule m) v) ""
         Left e ->
-            putStrLn $ P.prettyPrintMultipleErrors False e
+            putStrLn $ P.prettyPrintMultipleErrors P.defaultPPEOptions e
