@@ -39,8 +39,13 @@ import           Text.PrettyPrint.Leijen                 as PP
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Errors.hs#L1209-L1317
 
 --import Language.PureScript.Make
+import           Language.PureScript.AST.Binders
 import           Language.PureScript.AST.Declarations    (Declaration (..),
                                                           DeclarationRef (..),
+                                                          Expr (..), ImportDeclarationType (..),
+                                                          Module (Module))
+import           Language.PureScript.AST.Declarations    (Declaration (..),
+                                                          DeclarationRef (..), DoNotationElement (..),
                                                           Expr (..), ImportDeclarationType (..),
                                                           Module (Module))
 import           Language.PureScript.AST.Literals        (Literal (..))
@@ -49,15 +54,18 @@ import           Language.PureScript.Environment         (DataDeclType (..))
 import           Language.PureScript.Errors              as P
 import           Language.PureScript.Names
 import           Language.PureScript.Parser.Declarations
+import           Language.PureScript.Pretty.Common       (prettyPrintObjectKey)
 import           Language.PureScript.Pretty.Types        (prettyPrintRowWith)
 import           Language.PureScript.Types               (Type (..))
-import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 indentationLevel :: Int
 indentationLevel = 4
 
 vSpace :: Doc
 vSpace = PP.line <> PP.line
+
+listify :: [Doc] -> Doc
+listify = cat . PP.punctuate (comma <> space)
 
 -- Language.PureScript.Names
 instance Pretty (ProperName a) where
@@ -87,13 +95,24 @@ ppImportDeclarationType Implicit = PP.empty
 ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
+instance Pretty (OpName a) where
+    pretty (OpName name) = text name
 
 -- Language.PureScript.AST.Declarations
 instance Pretty DeclarationRef where
-    pretty (TypeRef properName ns) = text "TypeRef"
-    pretty (TypeOpRef (OpName opName)) = text "TypeOpRef"
+    pretty (TypeRef properName ns) =
+        pretty properName <> constructors
+        where
+            constructors = case ns of
+                Nothing ->
+                    PP.empty
+                Just [] ->
+                    PP.empty
+                Just properNames ->
+                    space <> listify (map pretty properNames)
+    pretty (TypeOpRef (OpName opName)) = text "TypeOpRefs"
     pretty (ValueRef ident) = pretty ident
-    pretty (ValueOpRef (OpName opName)) = text "ValueOpRef"
+    pretty (ValueOpRef opName) = parens $ pretty opName
     pretty (TypeClassRef properName) = text "class" <+> pretty properName
     pretty (TypeInstanceRef ident) = text "TypeInstanceRef"
     pretty (ModuleRef moduleName) = pretty moduleName
@@ -130,8 +149,8 @@ instance Pretty Declaration where
                 case dataDeclType of
                     Data -> "data"
                     Newtype -> "newtype"
-            leftTypes =
-                hsep . map (\(s, k) -> text s) $ lT
+            leftTypes = text "leftTypes"
+                --hsep . map (\(s, k) -> text s) $ lT
             constructors =
                 hsep . intersperse (text "|") . map (\(n, ts) -> pretty n <+> (hsep . map pretty $ ts)) $ cs
     pretty (DataBindingGroupDeclaration declarations) = text "DataBindingGroupDeclaration"
@@ -149,7 +168,7 @@ instance Pretty Declaration where
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
     pretty (FixityDeclaration fixity) = text "FixityDeclaration"
-    pretty (ImportDeclaration moduleName importDeclarationType mModuleName) = text "ImportDeclaration" --text "import" <+> pretty moduleName <> ppImportDeclarationType importDeclarationType<> ppQualifiedImport qualifiedModuleName
+    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) = text "import" <+> pretty moduleName <> ppImportDeclarationType importDeclarationType <> ppQualifiedImport qualifiedModuleName
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclaration"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody) = text "instance" <+> pretty ident <+> text "TypeInstanceDeclaration"
     pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
@@ -180,38 +199,50 @@ instance Pretty Type where
 instance Pretty Expr where
     pretty (Literal literal) = pretty literal
     pretty (UnaryMinus expr) = text "-" <> pretty expr
-    pretty (BinaryNoParens expr1 expr2 expr3) = pretty "BinaryNoParens"
-    pretty (Parens expr) = text "(" <> pretty expr <> text ")"
+    pretty (BinaryNoParens op left right) = pretty left <+> pretty op <+> pretty right
+    pretty (Parens expr) = parens $ pretty expr
     pretty (ObjectGetter s) = text "_." <> text s
-    pretty (Accessor s expr) = text "Accessor"
+    pretty (Accessor field expr) = pretty expr <> dot <> pretty field
     pretty (ObjectUpdate expr ss) = text "ObjectUpdate"
     pretty (Abs l expr) = pretty "Abs"
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
-    pretty (Op o) = text "Op"
-    pretty (IfThenElse expr1 expr2 expr3) = text "if" <+> pretty expr1 PP.<$> text "then" <+> pretty expr2 PP.<$> text "else" <+> pretty expr3
+    pretty (Op qualified) = pretty qualified
+    pretty (IfThenElse expr1 expr2 expr3) =
+        text "if" <+> pretty expr1 PP.<$> text "then" <+> pretty expr2 PP.<$> text "else" <+> pretty expr3
     pretty (Constructor qualified) = text "Constructor"
     pretty (Case exprs caseAlternatives) = text "Case"
     pretty (TypedValue bool expr typ) = text "TypedValue"
-    pretty (Let declarations expr) = pretty expr PP.<$> text "where" PP.<$> text "foo"
-    pretty (Do doNotationElements) = text "Do"
+    pretty (Let declarations expr) = pretty expr PP.<$> text "where" PP.<$> vcat (map pretty declarations)
+    pretty (Do doNotationElements) =
+        text "do" PP.<$> PP.indent indentationLevel (vsep (map pretty doNotationElements))
     pretty (TypeClassDictionaryConstructorApp qualified expr) = text "TypeClassDictionaryConstructorApp"
     pretty (TypeClassDictionary constraint a) = text "TypeClassDictionary"
     pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
     pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
-    pretty AnonymousArgument = text "AnonymousArgument"
+    pretty AnonymousArgument = text "_"
     pretty (Hole hole) = text hole
     pretty (PositionedValue sourceSpan comments expr) = pretty expr
 
 -- Language.PureScript.Names
 instance Pretty a => Pretty (Qualified a) where
     pretty (Qualified mN n) =
-        pretty moduleName <> pretty n
+        moduleName <> pretty n
         where
             moduleName =
                 case mN of
-                    Just name -> pretty name
+                    Just name -> pretty name <> dot
                     Nothing -> text ""
+
+
+instance Pretty DoNotationElement where
+    pretty (DoNotationValue expr) = pretty expr
+    pretty (DoNotationBind binder expr) = pretty binder <+> text "<-" <+> pretty expr
+    pretty (DoNotationLet declarations) = text "DoNotationLet"
+    pretty (PositionedDoNotationElement sourceSpan comments doNotationElement) = text "PositionedDoNotationElement"
+
+instance Pretty Binder where
+    pretty _ = text "Binder"
 
 -- Language.PureScript.AST.Literals
 instance Pretty a => Pretty (Literal a) where
