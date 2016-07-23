@@ -210,7 +210,7 @@ instance Pretty Expr where
     pretty (Op qualified) = pretty qualified
     pretty (IfThenElse expr1 expr2 expr3) =
         text "if" <+> pretty expr1 PP.<$> text "then" <+> pretty expr2 PP.<$> text "else" <+> pretty expr3
-    pretty (Constructor qualified) = text "Constructor"
+    pretty (Constructor qualified) = pretty qualified
     pretty (Case exprs caseAlternatives) = text "Case"
     pretty (TypedValue bool expr typ) = text "TypedValue"
     pretty (Let declarations expr) = pretty expr PP.<$> text "where" PP.<$> vcat (map pretty declarations)
