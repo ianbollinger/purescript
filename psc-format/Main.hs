@@ -56,8 +56,8 @@ import           Language.PureScript.Names
 import           Language.PureScript.Parser.Declarations
 import           Language.PureScript.Pretty.Common       (prettyPrintObjectKey)
 import           Language.PureScript.Pretty.Types        (prettyPrintRowWith)
+import           Language.PureScript.Pretty.Values       (prettyPrintBinder)
 import           Language.PureScript.Types               (Type (..))
-
 indentationLevel :: Int
 indentationLevel = 4
 
@@ -195,6 +195,15 @@ instance Pretty Type where
     pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
     pretty _ = text ""
 
+printAbs arg val isFirstAbs =
+    case (val, isFirstAbs) of
+        (Abs (Left argN) valN, True) ->
+            text "\\" <> text (showIdent arg) <+> printAbs argN valN False
+        (_, True) ->
+            text "\\" <> pretty (showIdent arg) <> text " -> " <> pretty val
+        _ ->
+            text "" <> pretty (showIdent arg) <> text " -> " <> pretty val
+
 -- Language.PureScript.AST.Declarations
 instance Pretty Expr where
     pretty (Literal literal) = pretty literal
@@ -204,7 +213,8 @@ instance Pretty Expr where
     pretty (ObjectGetter s) = text "_." <> text s
     pretty (Accessor field expr) = pretty expr <> dot <> pretty field
     pretty (ObjectUpdate expr ss) = text "ObjectUpdate"
-    pretty (Abs l expr) = pretty "Abs"
+    pretty (Abs (Left arg) val) = printAbs arg val True
+    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <> text " -> " <> pretty val
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
