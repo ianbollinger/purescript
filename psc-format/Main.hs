@@ -13,25 +13,25 @@
 -----------------------------------------------------------------------------
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE RecordWildCards  #-}
+{-# LANGUAGE TupleSections    #-}
 
 module Main where
 
-import Prelude hiding (lex)
+import           Prelude                                 hiding (lex)
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Error.Class (MonadError(..))
+import           Control.Applicative
+import           Control.Monad
+import           Control.Monad.Error.Class               (MonadError (..))
 --import Control.Monad.Writer.Strict
 
-import Data.List (intersperse)
+import           Data.List                               (intersperse)
 
 --import Options.Applicative ((<>))
 
-import Text.PrettyPrint.Leijen as PP
+import           Text.PrettyPrint.Leijen                 as PP
 
 --import qualified Language.PureScript as P
 --import qualified Paths_purescript as Paths
@@ -39,14 +39,19 @@ import Text.PrettyPrint.Leijen as PP
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Errors.hs#L1209-L1317
 
 --import Language.PureScript.Make
-import Language.PureScript.Environment (DataDeclType (..))
-import Language.PureScript.Names
-import Language.PureScript.Parser.Declarations
-import Language.PureScript.Errors as P
-import Language.PureScript.Types (Type (..))
-import Language.PureScript.AST.Literals (Literal (..))
-import Language.PureScript.AST.SourcePos (SourcePos, SourceSpan)
-import Language.PureScript.AST.Declarations (Module (Module), Declaration(..), Expr (..), ImportDeclarationType (..), DeclarationRef (..))
+import           Language.PureScript.AST.Declarations    (Declaration (..),
+                                                          DeclarationRef (..),
+                                                          Expr (..), ImportDeclarationType (..),
+                                                          Module (Module))
+import           Language.PureScript.AST.Literals        (Literal (..))
+import           Language.PureScript.AST.SourcePos       (SourcePos, SourceSpan)
+import           Language.PureScript.Environment         (DataDeclType (..))
+import           Language.PureScript.Errors              as P
+import           Language.PureScript.Names
+import           Language.PureScript.Parser.Declarations
+import           Language.PureScript.Pretty.Types        (prettyPrintRowWith)
+import           Language.PureScript.Types               (Type (..))
+import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 indentationLevel :: Int
 indentationLevel = 4
@@ -82,6 +87,7 @@ ppImportDeclarationType Implicit = PP.empty
 ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
+
 -- Language.PureScript.AST.Declarations
 instance Pretty DeclarationRef where
     pretty (TypeRef properName ns) = text "TypeRef"
@@ -93,6 +99,27 @@ instance Pretty DeclarationRef where
     pretty (ModuleRef moduleName) = pretty moduleName
     pretty (ReExportRef moduleName ref) = text "ReExportRef"
     pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = pretty declarationRef
+
+prettyPrintRowWith :: Char -> Char -> Type -> Doc
+prettyPrintRowWith open close = uncurry listToDoc . toList []
+    where
+        tailToPs :: Type -> Doc
+        tailToPs REmpty = PP.empty
+        tailToPs other = text "| " <> pretty other
+
+        nameAndTypeToPs :: Char -> String -> Type -> Doc
+        nameAndTypeToPs start name ty = text (start : ' ' : name ++ " :: ") <> pretty ty
+
+        listToDoc :: [(String, Type)] -> Type -> Doc
+        listToDoc [] REmpty = text [open, close]
+        listToDoc [] rest = text [ open, ' ' ] <> tailToPs rest <> text [ ' ', close ]
+        listToDoc ts rest = PP.vcat $ zipWith (\(nm, ty) i -> nameAndTypeToPs (if i == 0 then open else ',') nm ty) ts [0 :: Int ..] ++
+            [ tailToPs rest, text [close] ]
+
+        toList :: [(String, Type)] -> Type -> ([(String, Type)], Type)
+        toList tys (RCons name ty row) = toList ((name, ty):tys) row
+        toList tys r = (reverse tys, r)
+
 
 -- Language.PureScript.AST.Declarations
 instance Pretty Declaration where
@@ -127,6 +154,7 @@ instance Pretty Declaration where
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody) = text "instance" <+> pretty ident <+> text "TypeInstanceDeclaration"
     pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
 
+
 pprintModule :: Module -> Doc
 pprintModule (Module sourceSpan comments moduleName declarations _) =
     text "module" <+> pretty moduleName <+> text "where" <> vSpace <> vsep (fmap pretty declarations)
@@ -134,15 +162,18 @@ pprintModule (Module sourceSpan comments moduleName declarations _) =
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
 -- Language.PureScript.Types
 instance Pretty Type where
-    pretty (TypeWildcard sourceSpan) = text "_"
+    pretty TypeWildcard{} = text "_"
     pretty (TypeVar var) = text var
-    pretty (PrettyPrintObject row) = text "ROW" --prettyPrintRowWith '{' '}' row
+    pretty (TypeLevelString s) = text $ show s
+    pretty (PrettyPrintObject row) = Main.prettyPrintRowWith '{' '}' row
     pretty (TypeConstructor ctor) = text $ runProperName $ disqualify ctor
-    --pretty (TUnknown u) = Just $ text $ '_' : show u
+    pretty (TUnknown u) = text $ '_' : show u
     pretty (Skolem name s _ _) = text $ name ++ show s
     pretty REmpty = text "()"
-    pretty row@RCons{} = text "ROW" --prettyPrintRowWith '(' ')' row
     pretty (TypeApp t s) = pretty t <+> pretty s
+    pretty row@RCons{} = Main.prettyPrintRowWith '(' ')' row
+    pretty (TypeOp op) = text $ showQualified runOpName op
+    pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
     pretty _ = text ""
 
 -- Language.PureScript.AST.Declarations
@@ -193,7 +224,7 @@ instance Pretty a => Pretty (Literal a) where
 
 main :: IO ()
 main = do
-    file <- readFile "C:/Users/Nicolas/Documents/Programming/BA/BA-UI/src/Main.purs"
+    file <- readFile "/home/joris/Projects/BA-UI/src/Main.purs"
 
     putStrLn file
     putStrLn "-----------"
