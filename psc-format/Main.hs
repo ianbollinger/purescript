@@ -87,12 +87,12 @@ ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $
 instance Pretty DeclarationRef where
     pretty (TypeRef properName ns) = text "TypeRef"
     --pretty (TypeOpRef ident) = text "TypeOpRef"
-    pretty (ValueRef ident) = text "ValueRef"
-    pretty (TypeClassRef properName) = text "TypeClassRef"
+    pretty (ValueRef ident) = pretty ident
+    pretty (TypeClassRef properName) = text "class" <+> pretty properName
     pretty (TypeInstanceRef ident) = text "TypeInstanceRef"
     pretty (ModuleRef moduleName) = pretty moduleName
     pretty (ProperRef ref) = text ref
-    pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = text "PositionedDeclarationRef"
+    pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = pretty declarationRef
 
 -- Language.PureScript.AST.Declarations
 instance Pretty Declaration where
