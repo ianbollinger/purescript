@@ -117,7 +117,7 @@ instance Pretty DeclarationRef where
                 Just [] ->
                     PP.empty
                 Just properNames ->
-                    space <> listify (map pretty properNames)
+                    space <> tupled (map pretty properNames)
     pretty (TypeOpRef (OpName opName)) = text "TypeOpRefs"
     pretty (ValueRef ident) = pretty ident
     pretty (ValueOpRef opName) = parens $ pretty opName
