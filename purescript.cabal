@@ -394,7 +394,8 @@ executable psc-format
                    containers -any, directory -any, filepath -any,
                    mtl -any, optparse-applicative >= 0.12.1, parsec -any, purescript -any,
                    time -any, transformers -any, transformers-compat -any, Glob >= 0.7 && < 0.8,
-                   aeson >= 0.8 && < 0.12, bytestring -any, utf8-string >= 1 && < 2, wl-pprint >= 1.2
+                   aeson >= 0.8 && < 0.12, bytestring -any, utf8-string >= 1 && < 2, wl-pprint >= 1.2,
+                   optparse-applicative >= 0.12.1
     main-is: Main.hs
     other-modules: Paths_purescript
     buildable: True
