@@ -100,6 +100,9 @@ ppImportDeclarationType Implicit = PP.empty
 ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
+ppBinders :: [Binder] -> Doc
+ppBinders = sep . map pretty
+
 instance Pretty (OpName a) where
     pretty (OpName name) = text name
 
@@ -181,8 +184,12 @@ instance Pretty Declaration where
                 case expr of
                     Left guards -> text "ValueDeclaration - Guards"
                     Right expression -> pretty expression
+            bs =
+                case binders of
+                    [] -> PP.empty
+                    _ -> space <> ppBinders binders
         in
-            pretty ident <+> text "=" PP.<$> PP.indent indentationLevel e <> vSpace
+            pretty ident <> bs <+> text "=" PP.<$> PP.indent indentationLevel e <> vSpace
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
@@ -221,13 +228,14 @@ instance Pretty Type where
     pretty (TUnknown u) = text $ '_' : show u
     pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) =  pretty s <+> text "->"
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s) = Main.prettyPrintRowWith '{' '}' s
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) = pretty s <+> text "->"
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = Main.prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
     pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
     pretty (ParensInType typ) = parens $ pretty typ
-    pretty (ForAll s t _) = text "ForAll"
+    pretty (ForAll s t _) = text ("forall " ++ s ++ ".") <+> pretty t
     pretty (ConstrainedType constraints typ) = text "ConstrainedType"
     pretty (KindedType typ kind) = pretty "KindedType"
     pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
@@ -238,9 +246,9 @@ printAbs arg val isFirstAbs =
         (Abs (Left argN) valN, True) ->
             text "\\" <> text (showIdent arg) <+> printAbs argN valN False
         (_, True) ->
-            text "\\" <> pretty (showIdent arg) <> text " -> " <> pretty val
+            text "\\" <> pretty (showIdent arg) <+> text "->" <+> pretty val
         _ ->
-            text "" <> pretty (showIdent arg) <> text " -> " <> pretty val
+            text "" <> pretty (showIdent arg) <+> text "->" <+> pretty val
 
 -- Language.PureScript.AST.Declarations
 instance Pretty Expr where
@@ -252,7 +260,7 @@ instance Pretty Expr where
     pretty (Accessor field expr) = pretty expr <> dot <> pretty field
     pretty (ObjectUpdate o ps) = pretty o <+> text "{" <+> listify (map (\(key, val) -> text key <+> text "=" <+> pretty val) ps) <+> text "}"
     pretty (Abs (Left arg) val) = printAbs arg val True
-    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <> text " -> " <> pretty val
+    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <+> text "->" PP.<$> (PP.indent indentationLevel $ pretty val)
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
@@ -293,10 +301,14 @@ instance Pretty Binder where
     pretty NullBinder = text "NullBinder"
     pretty (LiteralBinder literalBinder) = text "LiteralBinder"
     pretty (VarBinder ident) = pretty ident
-    pretty (ConstructorBinder constructorName binders) = text "ConstructorBinder"
+    pretty (ConstructorBinder constructorName binders) = pretty constructorName <> bs
+        where
+            bs = case binders of
+                [] -> PP.empty
+                _ -> space <> ppBinders binders
     pretty (OpBinder valueOpName) = text "OpBinder"
     pretty (BinaryNoParensBinder binder1 binder2 binder3) = text "BinaryNoParensBinder"
-    pretty (ParensInBinder binder) = text "ParensInBinder"
+    pretty (ParensInBinder binder) = parens . pretty $ binder
     pretty (NamedBinder ident binder) = text "NamedBinder"
     pretty (PositionedBinder _ comments binder) = pretty binder
     pretty (TypedBinder typ binder) = text "TypedBinder"
