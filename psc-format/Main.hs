@@ -199,7 +199,7 @@ instance Pretty Type where
     pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
     pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s) = Main.prettyPrintRowWith '{' '}' s
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) =  pretty s <+> text "->"
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) = pretty s <+> text "->"
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = Main.prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
@@ -216,9 +216,9 @@ printAbs arg val isFirstAbs =
         (Abs (Left argN) valN, True) ->
             text "\\" <> text (showIdent arg) <+> printAbs argN valN False
         (_, True) ->
-            text "\\" <> pretty (showIdent arg) <> text " -> " <> pretty val
+            text "\\" <> pretty (showIdent arg) <+> text "->" <+> pretty val
         _ ->
-            text "" <> pretty (showIdent arg) <> text " -> " <> pretty val
+            text "" <> pretty (showIdent arg) <+> text "->" <+> pretty val
 
 -- Language.PureScript.AST.Declarations
 instance Pretty Expr where
@@ -230,7 +230,7 @@ instance Pretty Expr where
     pretty (Accessor field expr) = pretty expr <> dot <> pretty field
     pretty (ObjectUpdate o ps) = pretty o <+> text "{" <+> listify (map (\(key, val) -> text key <+> text "=" <+> pretty val) ps) <+> text "}"
     pretty (Abs (Left arg) val) = printAbs arg val True
-    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <> text " -> " <> pretty val
+    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <+> text "->" PP.<$> (PP.indent indentationLevel $ pretty val)
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
