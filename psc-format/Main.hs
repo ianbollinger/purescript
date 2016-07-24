@@ -229,7 +229,10 @@ instance Pretty Type where
     pretty (TypeVar var) = text var
     pretty (TypeLevelString s) = text $ show s ++ "TypeLevelString"
     pretty (PrettyPrintObject row) = Main.prettyPrintRowWith '{' '}' row
-    pretty (TypeConstructor ctor) = text $ runProperName $ disqualify ctor
+    pretty (TypeConstructor (Qualified moduleName properName)) = 
+        case moduleName of
+            Nothing -> text $ runProperName properName
+            Just moduleN -> pretty moduleN <> dot <> text (runProperName properName)
     pretty (TUnknown u) = text $ '_' : show u
     pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
