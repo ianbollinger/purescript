@@ -279,7 +279,7 @@ instance Pretty a => Pretty (Literal a) where
     pretty (CharLiteral c) = text ['\'', c, '\'']
     pretty (BooleanLiteral b) = text $ if b then "true" else "false"
     pretty (ArrayLiteral vs) = PP.list $ map pretty vs
-    pretty (ObjectLiteral os) = text "{" <+> listify (map (\(key, val) -> text key <+> text "=" <+> pretty val) os) <+> text "}"
+    pretty (ObjectLiteral os) = text "{" <+> listify (map (\(key, val) -> text key <+> text ":" <+> pretty val) os) <+> text "}"
 
 
 data Config = Config
