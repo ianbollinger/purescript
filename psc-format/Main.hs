@@ -58,6 +58,8 @@ import           Language.PureScript.Pretty.Common       (prettyPrintObjectKey)
 import           Language.PureScript.Pretty.Types        (prettyPrintRowWith)
 import           Language.PureScript.Pretty.Values       (prettyPrintBinder)
 import           Language.PureScript.Types               (Type (..))
+import qualified Options.Applicative                     as Opts
+
 indentationLevel :: Int
 indentationLevel = 4
 
@@ -124,7 +126,7 @@ prettyPrintRowWith open close = uncurry listToDoc . toList []
     where
         tailToPs :: Type -> Doc
         tailToPs REmpty = PP.empty
-        tailToPs other = text "| " <> pretty other
+        tailToPs other = text "|" <+> pretty other
 
         nameAndTypeToPs :: Char -> String -> Type -> Doc
         nameAndTypeToPs start name ty = text (start : ' ' : name ++ " :: ") <> pretty ty
@@ -190,7 +192,7 @@ instance Pretty Type where
     pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
     pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s) = Main.prettyPrintRowWith '{' '}' s
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) = pretty "böö" <+> text "->" <+> pretty s
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) =  pretty s <+> text "->"
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = Main.prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
@@ -278,19 +280,39 @@ instance Pretty a => Pretty (Literal a) where
     pretty (CharLiteral c) = text ['\'', c, '\'']
     pretty (BooleanLiteral b) = text $ if b then "true" else "false"
     pretty (ArrayLiteral vs) = PP.list $ map pretty vs
-    pretty (ObjectLiteral os) = text "Object {}"
+    pretty (ObjectLiteral os) = text "{" <+> listify (map (\(key, val) -> text key <+> text "=" <+> pretty val) os) <+> text "}"
+
+
+data Config = Config
+  { input  :: String
+  , output :: String }
+
+config :: Opts.Parser Config
+config = Config
+     Opts.<$> Opts.strOption
+         ( Opts.long "input"
+        Opts.<> Opts.metavar ""
+        Opts.<> Opts.help "specify path to input file" )
+     Opts.<*> Opts.strOption
+         ( Opts.long "output"
+        Opts.<> Opts.metavar ""
+        Opts.<> Opts.help "specify path to output file" )
+
+runFormatter :: Config -> IO ()
+runFormatter (Config i o) = do
+    inputFile <- readFile i
+    case parseModulesFromFiles id [("Main", inputFile)] of
+            Right v -> do
+                let [(_, Module _ _ _ declarations _)] = v
+                writeFile o $ displayS (renderPretty 0.9 120 $ vsep $ fmap (\(_, m) -> pprintModule m) v) ""
+            Left e ->
+                putStrLn $ P.prettyPrintMultipleErrors P.defaultPPEOptions e
+runFormatter _ = return ()
 
 main :: IO ()
-main = do
-    file <- readFile "/home/joris/Projects/BA-UI/src/Main.purs"
-
-    putStrLn file
-    putStrLn "-----------"
-    case parseModulesFromFiles id [("Main", file)] of
-        Right v -> do
-            let [(_, Module _ _ _ declarations _)] = v
-            --print declarations
-            --putStrLn "------------"
-            putStrLn $ displayS (renderPretty 0.9 120 $ vsep $ fmap (\(_, m) -> pprintModule m) v) ""
-        Left e ->
-            putStrLn $ P.prettyPrintMultipleErrors P.defaultPPEOptions e
+main = Opts.execParser opts >>= runFormatter
+  where
+    opts = Opts.info (Opts.helper <*> config)
+      ( Opts.fullDesc
+     Opts.<> Opts.progDesc "run this program to format a purs file. "
+     Opts.<> Opts.header "psc-format - format purescript files" )
