@@ -39,6 +39,8 @@ import           Text.PrettyPrint.Leijen                 as PP
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Errors.hs#L1209-L1317
 
 --import Language.PureScript.Make
+import           Data.Maybe
+import qualified Language.PureScript                     as P
 import           Language.PureScript.AST.Binders
 import           Language.PureScript.AST.Declarations    (Declaration (..),
                                                           DeclarationRef (..),
@@ -52,6 +54,7 @@ import           Language.PureScript.AST.Literals        (Literal (..))
 import           Language.PureScript.AST.SourcePos       (SourcePos, SourceSpan)
 import           Language.PureScript.Environment         (DataDeclType (..))
 import           Language.PureScript.Errors              as P
+import qualified Language.PureScript.Kinds               as KK
 import           Language.PureScript.Names
 import           Language.PureScript.Parser.Declarations
 import           Language.PureScript.Pretty.Common       (prettyPrintObjectKey)
@@ -141,6 +144,20 @@ prettyPrintRowWith open close = uncurry listToDoc . toList []
         toList tys (RCons name ty row) = toList ((name, ty):tys) row
         toList tys r = (reverse tys, r)
 
+printKind Nothing = PP.empty
+printKind (Just k) =
+    let
+        sign =
+            case k of
+                KK.KUnknown a ->
+                    show a
+                KK.Star -> "*"
+                KK.Bang -> "!"
+                KK.Row kind -> "ROW KIND"
+                KK.FunKind kind1 kind2 ->  "FUNKIND KIND KIND"
+                KK.Symbol -> "SYMBOLL"
+    in
+        text ":" <+> text sign
 
 -- Language.PureScript.AST.Declarations
 instance Pretty Declaration where
@@ -151,8 +168,8 @@ instance Pretty Declaration where
                 case dataDeclType of
                     Data -> "data"
                     Newtype -> "newtype"
-            leftTypes = text "leftTypes"
-                --hsep . map (\(s, k) -> text s) $ lT
+            leftTypes =
+                cat $ map (\(s, kind) -> text s <> printKind kind) lT
             constructors =
                 hsep . intersperse (text "|") . map (\(n, ts) -> pretty n <+> (hsep . map pretty $ ts)) $ cs
     pretty (DataBindingGroupDeclaration declarations) = text "DataBindingGroupDeclaration"
@@ -171,10 +188,23 @@ instance Pretty Declaration where
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
     pretty (FixityDeclaration fixity) = text "FixityDeclaration"
     pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) = text "import" <+> pretty moduleName <> ppImportDeclarationType importDeclarationType <> ppQualifiedImport qualifiedModuleName
-    pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclaration"
-    pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody) = text "instance" <+> pretty ident <+> text "TypeInstanceDeclaration"
+    pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclarationsss"
+    pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody)
+        = text "instance" <+> pretty ident <+> text "::" <+> pretty qualified <+> printTypeConstructors types <+> text "where"
+            PP.<$> printTypeInstanceBody typeInstanceBody
     pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
 
+printTypeInstanceBody as =
+        text "IMPLEMENT THIS HERE!"
+
+printTypeConstructors as =
+    if length as == 1 then
+        pretty (printTypeConstructor $ head as)
+    else
+        text "---!" <> PP.cat (map printTypeConstructor as) <> text "!---"
+
+printTypeConstructor (TypeConstructor (Qualified Nothing a)) = text $ P.runProperName a
+printTypeConstructor _  = text "FAILED TO FORMAT TYPE CONSTRUCTOR"
 
 pprintModule :: Module -> Doc
 pprintModule (Module sourceSpan comments moduleName declarations _) =
