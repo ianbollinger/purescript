@@ -126,7 +126,7 @@ prettyPrintRowWith open close = uncurry listToDoc . toList []
     where
         tailToPs :: Type -> Doc
         tailToPs REmpty = PP.empty
-        tailToPs other = text "| " <> pretty other
+        tailToPs other = text "|" <+> pretty other
 
         nameAndTypeToPs :: Char -> String -> Type -> Doc
         nameAndTypeToPs start name ty = text (start : ' ' : name ++ " :: ") <> pretty ty
