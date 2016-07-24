@@ -147,8 +147,9 @@ prettyPrintRowWith open close = uncurry listToDoc . toList []
         toList tys (RCons name ty row) = toList ((name, ty):tys) row
         toList tys r = (reverse tys, r)
 
-printKind Nothing = PP.empty
-printKind (Just k) =
+ppKind :: Maybe KK.Kind -> Doc
+ppKind Nothing = PP.empty
+ppKind (Just k) =
     let
         sign =
             case k of
@@ -162,6 +163,10 @@ printKind (Just k) =
     in
         text ":" <+> text sign
 
+ppTypeList :: [(String, Maybe KK.Kind)] -> Doc
+ppTypeList = cat . map (\(s, kind) -> text s <> ppKind kind)
+
+
 -- Language.PureScript.AST.Declarations
 instance Pretty Declaration where
     pretty (DataDeclaration dataDeclType properName lT cs) =
@@ -171,12 +176,11 @@ instance Pretty Declaration where
                 case dataDeclType of
                     Data -> "data"
                     Newtype -> "newtype"
-            leftTypes =
-                cat $ map (\(s, kind) -> text s <> printKind kind) lT
+            leftTypes = ppTypeList lT
             constructors =
                 hsep . intersperse (text "|") . map (\(n, ts) -> pretty n <+> (hsep . map pretty $ ts)) $ cs
     pretty (DataBindingGroupDeclaration declarations) = text "DataBindingGroupDeclaration"
-    pretty (TypeSynonymDeclaration propertyName a typ) = text "type" <+> pretty propertyName <+> text "=" <+> pretty typ
+    pretty (TypeSynonymDeclaration propertyName params typ) = text "type" <+> pretty propertyName <+> ppTypeList params <+> text "=" <+> pretty typ
     pretty (TypeDeclaration ident typ) = pretty ident <+> text "::" <+> pretty typ
     pretty (ValueDeclaration ident nameKind binders expr) =
         let
