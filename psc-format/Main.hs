@@ -205,7 +205,7 @@ instance Pretty Type where
     pretty (TypeOp op) = text $ showQualified runOpName op
     pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
     pretty (ParensInType typ) = parens $ pretty typ
-    pretty (ForAll s t _) = text "ForAll"
+    pretty (ForAll s t _) = text ("forall " ++ s ++ ".") <+> pretty t
     pretty (ConstrainedType constraints typ) = text "ConstrainedType"
     pretty (KindedType typ kind) = pretty "KindedType"
     pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
