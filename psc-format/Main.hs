@@ -97,6 +97,9 @@ ppImportDeclarationType Implicit = PP.empty
 ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
+ppBinders :: [Binder] -> Doc
+ppBinders = hcat . map pretty
+
 instance Pretty (OpName a) where
     pretty (OpName name) = text name
 
@@ -164,8 +167,12 @@ instance Pretty Declaration where
                 case expr of
                     Left guards -> text "ValueDeclaration - Guards"
                     Right expression -> pretty expression
+            bs =
+                case binders of
+                    [] -> PP.empty
+                    _ -> space <> ppBinders binders
         in
-            pretty ident <+> text "=" PP.<$> PP.indent indentationLevel e <> vSpace
+            pretty ident <> bs <+> text "=" PP.<$> PP.indent indentationLevel e <> vSpace
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
@@ -264,10 +271,10 @@ instance Pretty Binder where
     pretty NullBinder = text "NullBinder"
     pretty (LiteralBinder literalBinder) = text "LiteralBinder"
     pretty (VarBinder ident) = pretty ident
-    pretty (ConstructorBinder constructorName binders) = text "ConstructorBinder"
+    pretty (ConstructorBinder constructorName binders) = pretty constructorName <+> ppBinders binders
     pretty (OpBinder valueOpName) = text "OpBinder"
     pretty (BinaryNoParensBinder binder1 binder2 binder3) = text "BinaryNoParensBinder"
-    pretty (ParensInBinder binder) = text "ParensInBinder"
+    pretty (ParensInBinder binder) = parens . pretty $ binder
     pretty (NamedBinder ident binder) = text "NamedBinder"
     pretty (PositionedBinder _ comments binder) = pretty binder
     pretty (TypedBinder typ binder) = text "TypedBinder"
