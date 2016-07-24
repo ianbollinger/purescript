@@ -191,7 +191,7 @@ instance Pretty Type where
     pretty (TUnknown u) = text $ '_' : show u
     pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) = pretty "böö" <+> text "->" <+> pretty s
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) =  pretty s <+> text "->"
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = Main.prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
