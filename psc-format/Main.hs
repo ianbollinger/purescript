@@ -49,7 +49,7 @@ import           Language.PureScript.AST.Declarations    (Declaration (..),
 import           Language.PureScript.AST.Declarations    (Declaration (..),
                                                           DeclarationRef (..), DoNotationElement (..),
                                                           Expr (..), ImportDeclarationType (..),
-                                                          Module (Module))
+                                                          Module (Module), TypeInstanceBody (..))
 import           Language.PureScript.AST.Literals        (Literal (..))
 import           Language.PureScript.AST.SourcePos       (SourcePos, SourceSpan)
 import           Language.PureScript.Environment         (DataDeclType (..))
@@ -198,11 +198,8 @@ instance Pretty Declaration where
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclarationsss"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody)
         = text "instance" <+> pretty ident <+> text "::" <+> pretty qualified <+> printTypeConstructors types <+> text "where"
-            PP.<$> printTypeInstanceBody typeInstanceBody
+            PP.<$> PP.indent indentationLevel (pretty typeInstanceBody)
     pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
-
-printTypeInstanceBody as =
-        text "IMPLEMENT THIS HERE!"
 
 printTypeConstructors as =
     if length as == 1 then
@@ -216,6 +213,10 @@ printTypeConstructor _  = text "FAILED TO FORMAT TYPE CONSTRUCTOR"
 pprintModule :: Module -> Doc
 pprintModule (Module sourceSpan comments moduleName declarations _) =
     text "module" <+> pretty moduleName <+> text "where" <> vSpace <> vsep (fmap pretty declarations)
+
+instance Pretty TypeInstanceBody where
+    pretty DerivedInstance = PP.empty
+    pretty (ExplicitInstance declarations) = vsep . map pretty $  declarations
 
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
 -- Language.PureScript.Types
@@ -260,7 +261,7 @@ instance Pretty Expr where
     pretty (Accessor field expr) = pretty expr <> dot <> pretty field
     pretty (ObjectUpdate o ps) = pretty o <+> text "{" <+> listify (map (\(key, val) -> text key <+> text "=" <+> pretty val) ps) <+> text "}"
     pretty (Abs (Left arg) val) = printAbs arg val True
-    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <+> text "->" PP.<$> (PP.indent indentationLevel $ pretty val)
+    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <+> text "->" PP.<$> PP.indent indentationLevel (pretty val)
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
@@ -298,7 +299,7 @@ instance Pretty DoNotationElement where
     pretty (PositionedDoNotationElement sourceSpan comments doNotationElement) = text "PositionedDoNotationElement"
 
 instance Pretty Binder where
-    pretty NullBinder = text "NullBinder"
+    pretty NullBinder = text "_"
     pretty (LiteralBinder literalBinder) = text "LiteralBinder"
     pretty (VarBinder ident) = pretty ident
     pretty (ConstructorBinder constructorName binders) = pretty constructorName <> bs
