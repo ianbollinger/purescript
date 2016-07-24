@@ -183,19 +183,25 @@ pprintModule (Module sourceSpan comments moduleName declarations _) =
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
 -- Language.PureScript.Types
 instance Pretty Type where
-    pretty TypeWildcard{} = text "_"
+    pretty (TypeWildcard _) = text "_"
     pretty (TypeVar var) = text var
-    pretty (TypeLevelString s) = text $ show s
+    pretty (TypeLevelString s) = text $ show s ++ "TypeLevelString"
     pretty (PrettyPrintObject row) = Main.prettyPrintRowWith '{' '}' row
     pretty (TypeConstructor ctor) = text $ runProperName $ disqualify ctor
     pretty (TUnknown u) = text $ '_' : show u
-    pretty (Skolem name s _ _) = text $ name ++ show s
+    pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) = pretty "böö" <+> text "->" <+> pretty s
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = Main.prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
     pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
-    pretty _ = text ""
+    pretty (ParensInType typ) = parens $ pretty typ
+    pretty (ForAll s t _) = text "ForAll"
+    pretty (ConstrainedType constraints typ) = text "ConstrainedType"
+    pretty (KindedType typ kind) = pretty "KindedType"
+    pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
+    pretty (PrettyPrintForAll xs typ) = text "PrettyPrintForall"
 
 printAbs arg val isFirstAbs =
     case (val, isFirstAbs) of
@@ -254,7 +260,17 @@ instance Pretty DoNotationElement where
     pretty (PositionedDoNotationElement sourceSpan comments doNotationElement) = text "PositionedDoNotationElement"
 
 instance Pretty Binder where
-    pretty _ = text "Binder"
+    pretty NullBinder = text "NullBinder"
+    pretty (LiteralBinder literalBinder) = text "LiteralBinder"
+    pretty (VarBinder ident) = pretty ident
+    pretty (ConstructorBinder constructorName binders) = text "ConstructorBinder"
+    pretty (OpBinder valueOpName) = text "OpBinder"
+    pretty (BinaryNoParensBinder binder1 binder2 binder3) = text "BinaryNoParensBinder"
+    pretty (ParensInBinder binder) = text "ParensInBinder"
+    pretty (NamedBinder ident binder) = text "NamedBinder"
+    pretty (PositionedBinder _ comments binder) = pretty binder
+    pretty (TypedBinder typ binder) = text "TypedBinder"
+
 
 -- Language.PureScript.AST.Literals
 instance Pretty a => Pretty (Literal a) where
@@ -287,7 +303,7 @@ runFormatter (Config i o) = do
     case parseModulesFromFiles id [("Main", inputFile)] of
             Right v -> do
                 let [(_, Module _ _ _ declarations _)] = v
-                writeFile o $ displayS (renderCompact $ vsep $ fmap (\(_, m) -> pprintModule m) v) ""
+                writeFile o $ displayS (renderPretty 0.9 120 $ vsep $ fmap (\(_, m) -> pprintModule m) v) ""
             Left e ->
                 putStrLn $ P.prettyPrintMultipleErrors P.defaultPPEOptions e
 runFormatter _ = return ()
