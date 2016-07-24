@@ -98,7 +98,7 @@ ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ ref
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
 ppBinders :: [Binder] -> Doc
-ppBinders = hcat . map pretty
+ppBinders = sep . map pretty
 
 instance Pretty (OpName a) where
     pretty (OpName name) = text name
@@ -271,7 +271,11 @@ instance Pretty Binder where
     pretty NullBinder = text "NullBinder"
     pretty (LiteralBinder literalBinder) = text "LiteralBinder"
     pretty (VarBinder ident) = pretty ident
-    pretty (ConstructorBinder constructorName binders) = pretty constructorName <+> ppBinders binders
+    pretty (ConstructorBinder constructorName binders) = pretty constructorName <> bs
+        where
+            bs = case binders of
+                [] -> PP.empty
+                _ -> space <> ppBinders binders
     pretty (OpBinder valueOpName) = text "OpBinder"
     pretty (BinaryNoParensBinder binder1 binder2 binder3) = text "BinaryNoParensBinder"
     pretty (ParensInBinder binder) = parens . pretty $ binder
