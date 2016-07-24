@@ -110,7 +110,7 @@ instance Pretty DeclarationRef where
         where
             constructors = case ns of
                 Nothing ->
-                    PP.empty
+                    space <> text "(..)"
                 Just [] ->
                     PP.empty
                 Just properNames ->
