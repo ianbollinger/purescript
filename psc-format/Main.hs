@@ -22,7 +22,6 @@ module Main where
 
 import           Prelude                                 hiding (lex)
 
-import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Error.Class               (MonadError (..))
 --import Control.Monad.Writer.Strict
@@ -31,7 +30,7 @@ import           Data.List                               (intersperse)
 
 --import Options.Applicative ((<>))
 
-import           Text.PrettyPrint.Leijen                 as PP
+import           Text.PrettyPrint.ANSI.Leijen            as PP
 
 --import qualified Language.PureScript as P
 --import qualified Paths_purescript as Paths
@@ -72,6 +71,17 @@ vSpace = PP.line <> PP.line
 listify :: [Doc] -> Doc
 listify = cat . PP.punctuate (comma <> space)
 
+prettyTupled :: [Doc] -> Doc
+prettyTupled docs = wide parens docs <|> skinny parens docs
+
+wide surround = surround . hcat . punctuate (text ", ")
+skinny surround = surround . hcat . punctuate (char ',') . map (\x -> text " " <> x <> linebreak)
+
+(<|>) :: Doc -> Doc -> Doc
+a <|> b = group $ flatAlt b a
+
+infixl 5 <|>
+
 -- Language.PureScript.Names
 instance Pretty (ProperName a) where
     pretty = text . runProperName
@@ -97,7 +107,7 @@ ppQualifiedImport Nothing = PP.empty
 
 ppImportDeclarationType :: ImportDeclarationType -> Doc
 ppImportDeclarationType Implicit = PP.empty
-ppImportDeclarationType (Explicit refs) = PP.space <> (tupled . map pretty $ refs)
+ppImportDeclarationType (Explicit refs) = PP.space <> (prettyTupled . map pretty $ refs)
 ppImportDeclarationType (Hiding refs) = text "hiding" <+> (tupled . map pretty $ refs)
 
 ppBinders :: [Binder] -> Doc
