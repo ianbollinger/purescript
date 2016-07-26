@@ -396,7 +396,7 @@ executable psc-format
                    time -any, transformers -any, transformers-compat -any, Glob >= 0.7 && < 0.8,
                    aeson >= 0.8 && < 0.12, bytestring -any, utf8-string >= 1 && < 2, ansi-wl-pprint >= 0.6.7.3
     main-is: Main.hs
-    other-modules: Paths_purescript
+    other-modules: Paths_purescript, Names, Declarations, Kind, Binder, Config
     buildable: True
     hs-source-dirs: psc-format
     ghc-options: -Wall -O2
