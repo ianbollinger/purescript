@@ -1,5 +1,6 @@
 module Literals where
 
+import Prelude ((++), ($), fmap)
 import Text.PrettyPrint.ANSI.Leijen
 import Language.PureScript.AST.Literals (Literal (..))
 import Pretty

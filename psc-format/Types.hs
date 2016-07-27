@@ -3,7 +3,7 @@
 module Types where
 
 import Prelude
-import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, (<+>), (<>))
+import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, sep, (<+>), (<>))
 import Language.PureScript.Types
 import Language.PureScript.Names
 import qualified Language.PureScript.Kinds as KK
@@ -48,7 +48,7 @@ printTypeConstructor (TypeConstructor (Qualified Nothing a)) = text $ runProperN
 printTypeConstructor _  = text "FAILED TO FORMAT TYPE CONSTRUCTOR"
 
 ppTypeList :: [(String, Maybe KK.Kind)] -> Doc
-ppTypeList = cat . fmap (\(s, kind) -> text s <> pretty kind)
+ppTypeList = sep . fmap (\(s, kind) -> text s <> pretty kind)
 
 prettyPrintRowWith :: Char -> Char -> Type -> Doc
 prettyPrintRowWith open close = uncurry listToDoc . toList []
