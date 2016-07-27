@@ -46,6 +46,8 @@ instance Pretty DeclarationRef where
     pretty (ReExportRef moduleName ref) = text "ReExportRef"
     pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = pretty declarationRef
 
+    prettyList = prettyTupled . fmap pretty
+
 instance Pretty Declaration where
     pretty (DataDeclaration dataDeclType properName lT cs) =
         text dataLabel <+> pretty properName <+> leftTypes <+> text "=" <+> constructors
