@@ -2,7 +2,7 @@
 
 module Declarations where
 
-import Prelude
+import Prelude hiding ((<$>))
 import Text.PrettyPrint.ANSI.Leijen as PP
 import Language.PureScript.AST.Declarations
 import Language.PureScript.Names
@@ -15,6 +15,7 @@ import Data.List (intersperse)
 import Config
 import Literals
 import Pretty
+import Comments
 
 printAbs :: Ident -> Expr -> Bool -> Doc
 printAbs arg val isFirstAbs =
@@ -73,7 +74,7 @@ instance Pretty Declaration where
                     [] -> PP.empty
                     _ -> space <> prettyList binders
         in
-            pretty ident <> bs <+> text "=" PP.<$> PP.indent indentationLevel e
+            pretty ident <> bs <+> text "=" <$> PP.indent indentationLevel e
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
@@ -82,8 +83,8 @@ instance Pretty Declaration where
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclarationsss"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody)
         = text "instance" <+> pretty ident <+> text "::" <+> pretty qualified <+> printTypeConstructors types <+> text "where"
-            PP.<$> PP.indent indentationLevel (pretty typeInstanceBody)
-    pretty (PositionedDeclaration sourceSpan comments declaration) = pretty declaration
+            <$> PP.indent indentationLevel (pretty typeInstanceBody)
+    pretty (PositionedDeclaration sourceSpan comments declaration) = pretty comments <$> pretty declaration
 
 instance Pretty Expr where
     pretty (Literal literal) = pretty literal
