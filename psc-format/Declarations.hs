@@ -43,7 +43,7 @@ instance Pretty DeclarationRef where
     pretty (ValueOpRef opName) = parens $ pretty opName
     pretty (TypeClassRef properName) = text "class" <+> pretty properName
     pretty (TypeInstanceRef ident) = text "TypeInstanceRef"
-    pretty (ModuleRef moduleName) = pretty moduleName
+    pretty (ModuleRef moduleName) = text "module" <+> pretty moduleName
     pretty (ReExportRef moduleName ref) = text "ReExportRef"
     pretty (PositionedDeclarationRef sourceSpan comments declarationRef) = pretty declarationRef
 
