@@ -35,6 +35,7 @@ import           Text.PrettyPrint.ANSI.Leijen            as PP
 
 import Names
 import Declarations
+import Comments
 --import qualified Language.PureScript as P
 --import qualified Paths_purescript as Paths
 
@@ -64,7 +65,8 @@ vSpace = PP.line <> PP.line
 
 pprintModule :: Module -> Doc
 pprintModule (Module sourceSpan comments moduleName declarations exports) =
-    text "module" <+> pretty moduleName <+> pretty exports <+> text "where" <> vSpace <> vsep (fmap pretty declarations)
+    pretty comments PP.<$>
+        text "module" <+> pretty moduleName <+> pretty exports <+> text "where" <> vSpace <> vsep (fmap pretty declarations)
 
 data Config = Config
   { input  :: String
