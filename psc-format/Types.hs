@@ -9,6 +9,7 @@ import Language.PureScript.Names
 import qualified Language.PureScript.Kinds as KK
 import Kind ()
 import Names ()
+import Data.List (intercalate)
 
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
 instance Pretty Type where
@@ -36,15 +37,15 @@ instance Pretty Type where
     pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
     pretty (PrettyPrintForAll xs typ) = text "PrettyPrintForall"
 
-ppForAll :: String -> Type -> [Doc] -> Doc
+ppForAll :: String -> Type -> [String] -> Doc
 ppForAll typeVar typ vars =
     case typ of
         ForAll s t _ ->
-            ppForAll s t $ text typeVar : vars
+            ppForAll s t $ typeVar : vars
         _ ->
-            text "forall" <+> typeVars <> text "." <+> pretty typ
+            text "forall" <+> typeVars <> text "." <+> group (pretty typ)
             where
-                typeVars = group . fillSep $ text typeVar : vars
+                typeVars = text . intercalate " " $ typeVar : vars
 
 printTypeConstructors :: [Type] -> Doc
 printTypeConstructors as =
