@@ -3,7 +3,7 @@
 module Types where
 
 import Prelude
-import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, sep, (<+>), (<>))
+import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, sep, (<+>), (<>), group, fillSep)
 import Language.PureScript.Types
 import Language.PureScript.Names
 import qualified Language.PureScript.Kinds as KK
@@ -30,11 +30,21 @@ instance Pretty Type where
     pretty (TypeOp op) = text $ showQualified runOpName op
     pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
     pretty (ParensInType typ) = parens $ pretty typ
-    pretty (ForAll s t _) = text ("forall " ++ s ++ ".") <+> pretty t
+    pretty (ForAll s t _) = ppForAll s t []
     pretty (ConstrainedType constraints typ) = text "ConstrainedType"
     pretty (KindedType typ kind) = pretty "KindedType"
     pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
     pretty (PrettyPrintForAll xs typ) = text "PrettyPrintForall"
+
+ppForAll :: String -> Type -> [Doc] -> Doc
+ppForAll typeVar typ vars =
+    case typ of
+        ForAll s t _ ->
+            ppForAll s t $ text typeVar : vars
+        _ ->
+            text "forall" <+> typeVars <> text "." <+> pretty typ
+            where
+                typeVars = group . fillSep $ text typeVar : vars
 
 printTypeConstructors :: [Type] -> Doc
 printTypeConstructors as =
