@@ -79,7 +79,12 @@ instance Pretty Declaration where
     pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
     pretty (FixityDeclaration fixity) = text "FixityDeclaration"
-    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) = text "import" <+> pretty moduleName <> pretty importDeclarationType <> pretty qualifiedModuleName
+    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) =
+        text "import" <+> pretty moduleName <> importBody
+        where
+            importBody = case qualifiedModuleName of
+                Nothing -> pretty importDeclarationType
+                Just qualifiedModuleName' -> pretty importDeclarationType <+> text "as" <+> pretty qualifiedModuleName'
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclarationsss"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody)
         = text "instance" <+> pretty ident <+> text "::" <+> pretty qualified <+> printTypeConstructors types <+> text "where"
