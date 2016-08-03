@@ -76,10 +76,16 @@ instance Pretty Declaration where
         in
             pretty ident <> bs <+> text "=" <$> PP.indent indentationLevel e
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
-    pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
+    pretty (ExternDeclaration tdent typ) =
+      text "foreign" <+> text "import" <+> pretty tdent <+> text "::" <+> pretty typ
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
     pretty (FixityDeclaration fixity) = text "FixityDeclaration"
-    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) = text "import" <+> pretty moduleName <> pretty importDeclarationType <> pretty qualifiedModuleName
+    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) =
+        text "import" <+> pretty moduleName <> importBody
+        where
+            importBody = case qualifiedModuleName of
+                Nothing -> pretty importDeclarationType
+                Just qualifiedModuleName' -> pretty importDeclarationType <+> text "as" <+> pretty qualifiedModuleName'
     pretty (TypeClassDeclaration properName a constraints declarations) = text "TypeClassDeclarationsss"
     pretty (TypeInstanceDeclaration ident constraints qualified types typeInstanceBody)
         = text "instance" <+> pretty ident <+> text "::" <+> pretty qualified <+> printTypeConstructors types <+> text "where"
@@ -112,7 +118,7 @@ instance Pretty Expr where
     pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
     pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
     pretty AnonymousArgument = text "_"
-    pretty (Hole hole) = text hole
+    pretty (Hole hole) = text "?" <> text hole
     pretty (PositionedValue sourceSpan comments expr) = pretty expr
 
 instance Pretty ImportDeclarationType where
