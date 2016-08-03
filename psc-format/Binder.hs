@@ -4,11 +4,12 @@ import Prelude
 import Text.PrettyPrint.ANSI.Leijen
 import Language.PureScript.AST.Binders
 import Data.List (intersperse)
+import Literals
 import Names
 
 instance Pretty Binder where
     pretty NullBinder = text "_"
-    pretty (LiteralBinder literalBinder) = text "LiteralBinder"
+    pretty (LiteralBinder literalBinder) = pretty literalBinder
     pretty (VarBinder ident) = pretty ident
     pretty (ConstructorBinder constructorName binders) = pretty constructorName <> bs
         where
