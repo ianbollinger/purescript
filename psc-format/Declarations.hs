@@ -76,7 +76,8 @@ instance Pretty Declaration where
         in
             pretty ident <> bs <+> text "=" <$> PP.indent indentationLevel e
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
-    pretty (ExternDeclaration tdent typ) = text "ExternDeclaration"
+    pretty (ExternDeclaration tdent typ) =
+      text "foreign" <+> text "import" <+> pretty tdent <+> text "::" <+> pretty typ
     pretty (ExternDataDeclaration properName kin) = text "ExternDataDeclaration"
     pretty (FixityDeclaration fixity) = text "FixityDeclaration"
     pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) =
