@@ -106,9 +106,9 @@ instance Pretty Expr where
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
     pretty (IfThenElse expr1 expr2 expr3) =
-        text "if" <+> pretty expr1 PP.<$> text "then" <+> pretty expr2 PP.<$> text "else" <+> pretty expr3
+        text "if" <+> pretty expr1 PP.<$> PP.indent indentationLevel (text "then" <+> pretty expr2) PP.<$> PP.indent indentationLevel (text "else" <+> pretty expr3)
     pretty (Constructor qualified) = pretty qualified
-    pretty (Case exprs caseAlternatives) = text "Case"
+    pretty (Case exprs caseAlternatives) = text "case" <+> pretty exprs <+> text "of" <$> PP.indent indentationLevel (pretty caseAlternatives)
     pretty (TypedValue bool expr typ) = text "TypedValue"
     pretty (Let declarations expr) = pretty expr PP.<$> text "where" PP.<$> vcat (fmap pretty declarations)
     pretty (Do doNotationElements) =
@@ -135,3 +135,11 @@ instance Pretty DoNotationElement where
     pretty (DoNotationBind binder expr) = pretty binder <+> text "<-" <+> pretty expr
     pretty (DoNotationLet declarations) = text "DoNotationLet"
     pretty (PositionedDoNotationElement sourceSpan comments doNotationElement) = text "PositionedDoNotationElement"
+
+instance Pretty CaseAlternative where
+    pretty (CaseAlternative caseAlternativeBinders caseAlternativeResult) =
+        pretty caseAlternativeBinders <+> text "->" <+> result
+        where
+            result = case caseAlternativeResult of
+                Left _ -> text "with guards"
+                Right expr -> pretty expr
