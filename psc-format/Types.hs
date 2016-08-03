@@ -9,6 +9,7 @@ import Language.PureScript.Names
 import qualified Language.PureScript.Kinds as KK
 import Kind ()
 import Names ()
+import Pretty
 import Data.List (intercalate)
 
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
@@ -32,10 +33,15 @@ instance Pretty Type where
     pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
     pretty (ParensInType typ) = parens $ pretty typ
     pretty (ForAll s t _) = ppForAll s t []
-    pretty (ConstrainedType constraints typ) = text "ConstrainedType"
-    pretty (KindedType typ kind) = pretty "KindedType"
+    pretty (ConstrainedType constraints typ) =
+        parens (listify (fmap pretty constraints)) <+> text "=>" <+> pretty typ
+    pretty (KindedType typ kind) = pretty typ <+> text "::" <+> pretty kind
     pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
     pretty (PrettyPrintForAll xs typ) = text "PrettyPrintForall"
+
+instance Pretty Constraint where
+    pretty (Constraint class' args _data) =
+        pretty class' <+> sep (fmap pretty args)
 
 ppForAll :: String -> Type -> [String] -> Doc
 ppForAll typeVar typ vars =
