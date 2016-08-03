@@ -118,7 +118,7 @@ instance Pretty Expr where
     pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
     pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
     pretty AnonymousArgument = text "_"
-    pretty (Hole hole) = text hole
+    pretty (Hole hole) = text "?" <> text hole
     pretty (PositionedValue sourceSpan comments expr) = pretty expr
 
 instance Pretty ImportDeclarationType where
