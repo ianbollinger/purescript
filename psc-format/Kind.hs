@@ -3,6 +3,7 @@
 module Kind where
 
 import Text.PrettyPrint.ANSI.Leijen (Pretty, (<+>), pretty, text)
+
 import Language.PureScript.Kinds
 
 instance Pretty Kind where

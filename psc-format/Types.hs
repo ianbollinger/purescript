@@ -1,16 +1,20 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Types where
+module Types
+    ( ppTypeList
+    ) where
 
 import Prelude
-import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, sep, (<+>), (<>), (</>), group, fillSep)
+
+import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, text, parens, dot, empty, vcat, sep, (<+>), (<>), (</>), group)
+
 import Language.PureScript.Types
 import Language.PureScript.Names
 import qualified Language.PureScript.Kinds as KK
+
 import Kind ()
 import Names ()
 import Pretty
-import Data.List (intercalate)
 
 -- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
 instance Pretty Type where
@@ -41,8 +45,8 @@ instance Pretty Type where
                 | length constraints == 1 = pretty (head constraints)
                 | otherwise = parens (listify (fmap pretty constraints))
     pretty (KindedType typ kind) = pretty typ <+> text "::" <+> pretty kind
-    pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
-    pretty (PrettyPrintForAll xs typ) = text "PrettyPrintForall"
+    pretty (PrettyPrintFunction _typ1 _typ2) = text "PrettyPrintFunction"
+    pretty (PrettyPrintForAll _xs _typ) = text "PrettyPrintForall"
 
 instance Pretty Constraint where
     pretty (Constraint class' args _data) =
@@ -56,18 +60,7 @@ ppForAll typeVar typ vars =
         _ ->
             text "forall" <+> typeVars <> text "." <+> group (pretty typ)
             where
-                typeVars = text . intercalate " " $ typeVar : vars
-
-printTypeConstructors :: [Type] -> Doc
-printTypeConstructors as =
-    if length as == 1 then
-        pretty (printTypeConstructor $ head as)
-    else
-        text "---!" <> cat (fmap printTypeConstructor as) <> text "!---"
-
-printTypeConstructor :: Type -> Doc
-printTypeConstructor (TypeConstructor (Qualified Nothing a)) = text $ runProperName a
-printTypeConstructor _  = text "FAILED TO FORMAT TYPE CONSTRUCTOR"
+                typeVars = text . unwords $ typeVar : vars
 
 ppTypeList :: [(String, Maybe KK.Kind)] -> Doc
 ppTypeList = sep . fmap (\(s, kind) -> text s <> pretty kind)

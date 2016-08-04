@@ -1,7 +1,11 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Binder where
 
 import Prelude
+
 import Text.PrettyPrint.ANSI.Leijen
+
 import Language.PureScript.AST.Binders
 
 import Comments ()
@@ -18,8 +22,9 @@ instance Pretty Binder where
             bs = case binders of
                 [] -> empty
                 _ -> space <> prettyList binders
-    pretty (OpBinder valueOpName) = text "OpBinder"
-    pretty (BinaryNoParensBinder binder1 binder2 binder3) = text "BinaryNoParensBinder"
+    pretty (OpBinder _valueOpName) = text "OpBinder"
+    pretty (BinaryNoParensBinder _binder1 _binder2 _binder3) =
+        text "BinaryNoParensBinder"
     pretty (ParensInBinder binder) = parens . pretty $ binder
     pretty (NamedBinder ident binder) = pretty ident <> text "@" <> pretty binder
     pretty (PositionedBinder _ comments binder) = comments' <> pretty binder

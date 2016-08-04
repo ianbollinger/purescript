@@ -1,22 +1,25 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Declarations where
+module Declarations () where
 
 import Prelude hiding ((<$>))
+import Data.List (intersperse)
+
 import Text.PrettyPrint.ANSI.Leijen as PP
+
 import Language.PureScript.AST.Declarations
 import Language.PureScript.AST.Operators
 import Language.PureScript.Names
 import Language.PureScript.Environment (DataDeclType (..))
 import Language.PureScript.Pretty.Values (prettyPrintBinder)
-import Names
+
+import Names ()
 import Types
-import Binder
-import Data.List (intersperse)
+import Binder ()
 import Config
-import Literals
+import Literals ()
 import Pretty
-import Comments
+import Comments ()
 
 printAbs :: Ident -> Expr -> Bool -> Doc
 printAbs arg val isFirstAbs =
@@ -43,9 +46,9 @@ instance Pretty DeclarationRef where
     pretty (ValueRef ident) = pretty ident
     pretty (ValueOpRef opName) = parens $ pretty opName
     pretty (TypeClassRef properName) = text "class" <+> pretty properName
-    pretty (TypeInstanceRef ident) = text "TypeInstanceRef"
+    pretty (TypeInstanceRef _ident) = text "TypeInstanceRef"
     pretty (ModuleRef moduleName) = text "module" <+> pretty moduleName
-    pretty (ReExportRef moduleName ref) = text "ReExportRef"
+    pretty (ReExportRef _moduleName _ref) = text "ReExportRef"
     pretty (PositionedDeclarationRef _sourceSpan comments declarationRef) =
         comments' <> pretty declarationRef
         where
@@ -81,7 +84,8 @@ instance Pretty Declaration where
                     ts'
                         | null ts = empty
                         | otherwise = space <> hsep (fmap pretty ts)
-    pretty (DataBindingGroupDeclaration declarations) = text "DataBindingGroupDeclaration"
+    pretty (DataBindingGroupDeclaration _declarations) =
+        text "DataBindingGroupDeclaration"
     pretty (TypeSynonymDeclaration propertyName params typ) =
         hardline
         <> text "type"
@@ -95,7 +99,7 @@ instance Pretty Declaration where
                 | otherwise = space <> ppTypeList params
     pretty (TypeDeclaration ident typ) =
         nest indentationLevel (pretty ident </> text "::" <+> pretty typ)
-    pretty (ValueDeclaration ident nameKind binders expr) =
+    pretty (ValueDeclaration ident _nameKind binders expr) =
         pretty ident <> binders' <> body
         where
             body = case expr of
@@ -111,14 +115,14 @@ instance Pretty Declaration where
             binders' = case binders of
                 [] -> PP.empty
                 _ -> space <> prettyList binders
-            printGuardExpr (guard, expr) =
+            printGuardExpr (guard, expr') =
                 nest indentationLevel
                   ( text "|"
                   <+> pretty guard
                   <+> text "="
-                  </> pretty expr
+                  </> pretty expr'
                   )
-    pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
+    pretty (BindingGroupDeclaration _is) = text "BindingGroupDeclaration"
     pretty (ExternDeclaration tdent typ) =
         hardline
         <> nest indentationLevel
@@ -241,7 +245,8 @@ instance Pretty Expr where
         <+> listify (fmap pretty exprs)
         <+> text "of"
         <$> PP.indent indentationLevel (vsep (fmap pretty caseAlternatives))
-    pretty (TypedValue bool expr typ) = pretty expr <+> text "::" <+> pretty typ
+    pretty (TypedValue _bool expr typ) =
+        pretty expr <+> text "::" <+> pretty typ
     pretty (Let decls expr) =
         pretty expr
         <$> text "where"
@@ -250,10 +255,13 @@ instance Pretty Expr where
         line
         <> text "do"
         <$> indent indentationLevel (vsep (fmap pretty doNotationElements))
-    pretty (TypeClassDictionaryConstructorApp qualified expr) = text "TypeClassDictionaryConstructorApp"
-    pretty (TypeClassDictionary constraint a) = text "TypeClassDictionary"
-    pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
-    pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
+    pretty (TypeClassDictionaryConstructorApp _qualified _expr) =
+        text "TypeClassDictionaryConstructorApp"
+    pretty (TypeClassDictionary _constraint _a) = text "TypeClassDictionary"
+    pretty (TypeClassDictionaryAccessor _qualified _ident) =
+       text "TypeClassDictionaryAccessor"
+    pretty (SuperClassDictionary _qualified _types) =
+        text "SuperClassDictionary"
     pretty AnonymousArgument = text "_"
     pretty (Hole hole) = text "?" <> text hole
     pretty (PositionedValue _sourceSpan comments expr) =
@@ -281,14 +289,14 @@ instance Pretty DoNotationElement where
               | otherwise = vsep (fmap pretty comments) <> hardline
 
 instance Pretty CaseAlternative where
-    pretty (CaseAlternative caseAlternativeBinders caseAlternativeResult) =
-        case caseAlternativeResult of
+    pretty (CaseAlternative caseAlternativeBinders' caseAlternativeResult') =
+        case caseAlternativeResult' of
             Left exprs ->
                 binders
                 <$> indent indentationLevel (vsep (fmap printGuardExpr exprs))
             Right expr ->
                 nest indentationLevel (binders <+> text "->" </> pretty expr)
         where
-            binders = listify (fmap pretty caseAlternativeBinders)
+            binders = listify (fmap pretty caseAlternativeBinders')
             printGuardExpr (guard, expr) =
                 text "|" <+> pretty guard <+> text "->" <+> pretty expr
