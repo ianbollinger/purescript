@@ -280,7 +280,7 @@ instance Pretty DoNotationElement where
     pretty (DoNotationValue expr) = pretty expr
     pretty (DoNotationBind binder expr) = pretty binder <+> text "<-" <+> pretty expr
     pretty (DoNotationLet declarations) =
-      text "let" <$> indent indentationLevel (vsep (fmap pretty declarations))
+        nest 4 (text "let" <+> vsep (fmap pretty declarations))
     pretty (PositionedDoNotationElement _sourceSpan comments element) =
       comments' <> pretty element
       where

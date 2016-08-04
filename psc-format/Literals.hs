@@ -17,5 +17,10 @@ instance Pretty a => Pretty (Literal a) where
     pretty (StringLiteral s) = text ("\"" ++ s ++ "\"")
     pretty (CharLiteral c) = text ['\'', c, '\'']
     pretty (BooleanLiteral b) = text $ if b then "true" else "false"
-    pretty (ArrayLiteral vs) = list $ fmap pretty vs
-    pretty (ObjectLiteral os) = text "{" <+> listify (fmap (\(key, val) -> text key <+> text ":" <+> pretty val) os) <+> text "}"
+    pretty (ArrayLiteral vs) =
+        prettyEncloseSep lbracket rbracket (fmap pretty vs)
+    pretty (ObjectLiteral os) =
+        prettyEncloseSep
+            (char '{')
+            (char '}')
+            (fmap (\(key, val) -> text key <> char ':' <+> pretty val) os)
