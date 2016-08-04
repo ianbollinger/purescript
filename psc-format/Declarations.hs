@@ -34,12 +34,12 @@ instance Pretty DeclarationRef where
         where
             constructors = case ns of
                 Nothing ->
-                    space <> text "(..)"
+                    text "(..)"
                 Just [] ->
                     PP.empty
                 Just properNames ->
-                    space <> tupled (fmap pretty properNames)
-    pretty (TypeOpRef (OpName opName)) = text "TypeOpRefs"
+                    tupled (fmap pretty properNames)
+    pretty (TypeOpRef (OpName opName)) = text "type" <+> parens (pretty opName)
     pretty (ValueRef ident) = pretty ident
     pretty (ValueOpRef opName) = parens $ pretty opName
     pretty (TypeClassRef properName) = text "class" <+> pretty properName
@@ -56,41 +56,89 @@ instance Pretty DeclarationRef where
     prettyList = prettyTupled . fmap pretty
 
 instance Pretty Declaration where
-    pretty (DataDeclaration dataDeclType properName lT cs) =
-        text dataLabel <+> pretty properName <+> leftTypes <+> text "=" <+> constructors
+    pretty (DataDeclaration dataDeclType properName lT constructors) =
+        hardline
+        <> text dataLabel
+        <+> pretty properName
+        <> leftTypes
+        <> constructors'
         where
             dataLabel =
                 case dataDeclType of
                     Data -> "data"
                     Newtype -> "newtype"
-            leftTypes = ppTypeList lT
-            constructors =
-                hsep . intersperse (text "|") . fmap (\(n, ts) -> pretty n <+> (hsep . fmap pretty $ ts)) $ cs
+            leftTypes
+                | null lT = empty
+                | otherwise = space <> ppTypeList lT
+            constructors'
+                | null constructors = empty
+                | otherwise =
+                    space
+                    <> text "="
+                    <+> hsep (intersperse (text "|") (fmap formatConstructor constructors))
+            formatConstructor (n, ts) = pretty n <> ts'
+                where
+                    ts'
+                        | null ts = empty
+                        | otherwise = space <> hsep (fmap pretty ts)
     pretty (DataBindingGroupDeclaration declarations) = text "DataBindingGroupDeclaration"
-    pretty (TypeSynonymDeclaration propertyName params typ) = text "type" <+> pretty propertyName <+> ppTypeList params <+> text "=" <+> pretty typ
-    pretty (TypeDeclaration ident typ) = pretty ident <+> text "::" <+> pretty typ
+    pretty (TypeSynonymDeclaration propertyName params typ) =
+        hardline
+        <> text "type"
+        <+> pretty propertyName
+        <> params'
+        <+> text "="
+        <+> pretty typ
+        where
+            params'
+                | null params = empty
+                | otherwise = space <> ppTypeList params
+    pretty (TypeDeclaration ident typ) =
+        nest indentationLevel (pretty ident </> text "::" <+> pretty typ)
     pretty (ValueDeclaration ident nameKind binders expr) =
         pretty ident <> binders' <> body
         where
             body = case expr of
                 Left exprs ->
                     empty
-                    <$> indent indentationLevel (vcat (fmap printGuardExpr exprs))
+                    <$> indent indentationLevel (vsep (fmap printGuardExpr exprs))
                 Right expression ->
-                    space
-                    <> text "="
-                    <$> PP.indent indentationLevel (pretty expression)
+                    nest indentationLevel
+                      ( space
+                      <> text "="
+                      </> pretty expression
+                      )
             binders' = case binders of
                 [] -> PP.empty
                 _ -> space <> prettyList binders
             printGuardExpr (guard, expr) =
-                text "|" <+> pretty guard <+> text "=" <+> pretty expr
+                nest indentationLevel
+                  ( text "|"
+                  <+> pretty guard
+                  <+> text "="
+                  </> pretty expr
+                  )
     pretty (BindingGroupDeclaration is) = text "BindingGroupDeclaration"
     pretty (ExternDeclaration tdent typ) =
-      text "foreign" <+> text "import" <+> pretty tdent <+> text "::" <+> pretty typ
+        hardline
+        <> nest indentationLevel
+          ( text "foreign"
+          <+> text "import"
+          <+> pretty tdent
+          </> text "::"
+          <+> pretty typ
+          )
     pretty (ExternDataDeclaration properName kin) =
-        text "foreign" <+> text "import" <+> text "data" <+> pretty properName <+> text "::" <+> pretty kin
-    pretty (FixityDeclaration fixity) = case fixity of
+        hardline
+        <> nest indentationLevel
+          ( text "foreign"
+          <+> text "import"
+          <+> text "data"
+          <+> pretty properName
+          </> text "::"
+          <+> pretty kin
+          )
+    pretty (FixityDeclaration fixity) = hardline <> case fixity of
         Left valueFixity -> pretty valueFixity
         Right typeFixity -> pretty typeFixity
     pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) =
@@ -100,24 +148,25 @@ instance Pretty Declaration where
                 Nothing -> pretty importDeclarationType
                 Just qualifiedModuleName' -> pretty importDeclarationType <+> text "as" <+> pretty qualifiedModuleName'
     pretty (TypeClassDeclaration properName a constraints declarations) =
-        text "class"
-        <+> parens (hsep (fmap pretty constraints))
-        <+> text "<="
+        hardline
+        <> text "class"
+        <> constraints'
         <+> pretty properName
         <+> ppTypeList a
         <+> text "where"
-        <$> indent indentationLevel (hcat (fmap pretty declarations))
+        <$> indent indentationLevel (vsep (fmap pretty declarations))
+        where
+            constraints'
+                | null constraints = empty
+                | length constraints == 1 =
+                    space
+                    <> pretty (head constraints)
+                    <+> text "<="
+                | otherwise =
+                    space
+                    <> parens (listify (fmap pretty constraints))
+                    <+> text "<="
     pretty (TypeInstanceDeclaration ident constraints qualified types body) =
-<<<<<<< HEAD
-        text "instance"
-        <+> pretty ident
-        <+> text "::"
-        <> constraints'
-        <+> pretty qualified
-        <+> pretty (head types)
-        <+> text "where"
-        <$> indent indentationLevel (pretty body)
-=======
         case body of
             DerivedInstance -> hardline <> text "derive" <+> header
             ExplicitInstance declarations ->
@@ -125,7 +174,6 @@ instance Pretty Declaration where
                 <> header
                 <+> text "where"
                 <$> indent indentationLevel (vsep (fmap pretty declarations))
->>>>>>> 1db6ce5... Pretty print derived instances and PositionedDeclarationRefs
         where
             header =
                 text "instance"
@@ -136,11 +184,20 @@ instance Pretty Declaration where
                 <+> pretty (head types)
             constraints'
                 | null constraints = empty
+                | length constraints == 1 =
+                    space
+                    <> pretty (head constraints)
+                    <+> text "=>"
                 | otherwise =
                     space
-                    <> parens (hsep (fmap pretty constraints))
+                    <> parens (listify (fmap pretty constraints))
                     <+> text "=>"
-    pretty (PositionedDeclaration sourceSpan comments declaration) = pretty comments <$> pretty declaration
+    pretty (PositionedDeclaration _sourceSpan comments declaration) =
+        comments' <> pretty declaration
+        where
+            comments'
+                | null comments = empty
+                | otherwise = vsep (fmap pretty comments) <> hardline
 
 instance Pretty ValueFixity where
     pretty (ValueFixity fixity (Qualified module' identOrConstructor) opName) =
@@ -172,52 +229,65 @@ instance Pretty Expr where
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
     pretty (IfThenElse expr1 expr2 expr3) =
-        text "if" <+> pretty expr1 PP.<$> PP.indent indentationLevel (text "then" <+> pretty expr2) PP.<$> PP.indent indentationLevel (text "else" <+> pretty expr3)
+        sep
+          [ text "if" <+> pretty expr1
+          , text "then" <+> pretty expr2
+          , text "else" <+> pretty expr3
+          ]
     pretty (Constructor qualified) = pretty qualified
     pretty (Case exprs caseAlternatives) =
-        text "case"
+        line
+        <> text "case"
         <+> listify (fmap pretty exprs)
         <+> text "of"
-        <$> PP.indent indentationLevel (vcat (fmap pretty caseAlternatives))
+        <$> PP.indent indentationLevel (vsep (fmap pretty caseAlternatives))
     pretty (TypedValue bool expr typ) = pretty expr <+> text "::" <+> pretty typ
-    pretty (Let declarations expr) = pretty expr PP.<$> text "where" PP.<$> vcat (fmap pretty declarations)
+    pretty (Let decls expr) =
+        pretty expr
+        <$> text "where"
+        <$> vsep (fmap pretty decls)
     pretty (Do doNotationElements) =
-        text "do" PP.<$> PP.indent indentationLevel (vsep (fmap pretty doNotationElements))
+        line
+        <> text "do"
+        <$> indent indentationLevel (vsep (fmap pretty doNotationElements))
     pretty (TypeClassDictionaryConstructorApp qualified expr) = text "TypeClassDictionaryConstructorApp"
     pretty (TypeClassDictionary constraint a) = text "TypeClassDictionary"
     pretty (TypeClassDictionaryAccessor qualified ident) = text "TypeClassDictionaryAccessor"
     pretty (SuperClassDictionary qualified types) = text "SuperClassDictionary"
     pretty AnonymousArgument = text "_"
     pretty (Hole hole) = text "?" <> text hole
-    pretty (PositionedValue sourceSpan comments expr) = pretty expr
+    pretty (PositionedValue _sourceSpan comments expr) =
+      comments' <> pretty expr
+      where
+          comments'
+              | null comments = empty
+              | otherwise = vsep (fmap pretty comments) <> hardline
 
 instance Pretty ImportDeclarationType where
     pretty Implicit = PP.empty
     pretty (Explicit refs) = PP.space <> (prettyTupled . fmap pretty $ refs)
     pretty (Hiding refs) = text "hiding" <+> (tupled . fmap pretty $ refs)
 
-<<<<<<< HEAD
-instance Pretty TypeInstanceBody where
-    pretty DerivedInstance = PP.empty
-    pretty (ExplicitInstance declarations) = vsep . fmap pretty $  declarations
-
-=======
->>>>>>> 1db6ce5... Pretty print derived instances and PositionedDeclarationRefs
 instance Pretty DoNotationElement where
     pretty (DoNotationValue expr) = pretty expr
     pretty (DoNotationBind binder expr) = pretty binder <+> text "<-" <+> pretty expr
     pretty (DoNotationLet declarations) =
-      text "let" <$> indent indentationLevel (vcat (fmap pretty declarations))
-    pretty (PositionedDoNotationElement sourceSpan comments doNotationElement) = text "PositionedDoNotationElement"
+      text "let" <$> indent indentationLevel (vsep (fmap pretty declarations))
+    pretty (PositionedDoNotationElement _sourceSpan comments element) =
+      comments' <> pretty element
+      where
+          comments'
+              | null comments = empty
+              | otherwise = vsep (fmap pretty comments) <> hardline
 
 instance Pretty CaseAlternative where
     pretty (CaseAlternative caseAlternativeBinders caseAlternativeResult) =
         case caseAlternativeResult of
             Left exprs ->
                 binders
-                <$> indent indentationLevel (vcat (fmap printGuardExpr exprs))
+                <$> indent indentationLevel (vsep (fmap printGuardExpr exprs))
             Right expr ->
-                binders <+> text "->" <+> pretty expr
+                nest indentationLevel (binders <+> text "->" </> pretty expr)
         where
             binders = listify (fmap pretty caseAlternativeBinders)
             printGuardExpr (guard, expr) =

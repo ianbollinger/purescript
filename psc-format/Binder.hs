@@ -3,9 +3,11 @@ module Binder where
 import Prelude
 import Text.PrettyPrint.ANSI.Leijen
 import Language.PureScript.AST.Binders
-import Data.List (intersperse)
-import Literals
-import Names
+
+import Comments ()
+import Literals ()
+import Names ()
+import Types ()
 
 instance Pretty Binder where
     pretty NullBinder = text "_"
@@ -20,7 +22,11 @@ instance Pretty Binder where
     pretty (BinaryNoParensBinder binder1 binder2 binder3) = text "BinaryNoParensBinder"
     pretty (ParensInBinder binder) = parens . pretty $ binder
     pretty (NamedBinder ident binder) = pretty ident <> text "@" <> pretty binder
-    pretty (PositionedBinder _ comments binder) = pretty binder
-    pretty (TypedBinder typ binder) = text "TypedBinder"
+    pretty (PositionedBinder _ comments binder) = comments' <> pretty binder
+        where
+            comments'
+                | null comments = empty
+                | otherwise = vsep (fmap pretty comments) <> hardline
+    pretty (TypedBinder typ binder) = pretty binder <+> text "::" <+> pretty typ
 
     prettyList = sep . fmap pretty

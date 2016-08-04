@@ -3,7 +3,7 @@
 module Types where
 
 import Prelude
-import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, sep, (<+>), (<>), group, fillSep)
+import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, cat, text, parens, dot, empty, vcat, sep, (<+>), (<>), (</>), group, fillSep)
 import Language.PureScript.Types
 import Language.PureScript.Names
 import qualified Language.PureScript.Kinds as KK
@@ -26,7 +26,8 @@ instance Pretty Type where
     pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
     pretty REmpty = text "()"
     pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s) = prettyPrintRowWith '{' '}' s
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) = pretty s <+> text "->"
+    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) =
+        pretty s </> text "->"
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
@@ -34,7 +35,11 @@ instance Pretty Type where
     pretty (ParensInType typ) = parens $ pretty typ
     pretty (ForAll s t _) = ppForAll s t []
     pretty (ConstrainedType constraints typ) =
-        parens (listify (fmap pretty constraints)) <+> text "=>" <+> pretty typ
+        constraints' </> text "=>" <+> pretty typ
+        where
+            constraints'
+                | length constraints == 1 = pretty (head constraints)
+                | otherwise = parens (listify (fmap pretty constraints))
     pretty (KindedType typ kind) = pretty typ <+> text "::" <+> pretty kind
     pretty (PrettyPrintFunction typ1 typ2) = text "PrettyPrintFunction"
     pretty (PrettyPrintForAll xs typ) = text "PrettyPrintForall"

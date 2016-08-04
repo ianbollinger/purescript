@@ -32,10 +32,11 @@ import           Data.List                               (intersperse)
 
 import           Text.PrettyPrint.ANSI.Leijen            as PP
 
-
+import Config
 import Names
 import Declarations
 import Comments
+import Pretty
 --import qualified Language.PureScript as P
 --import qualified Paths_purescript as Paths
 
@@ -61,12 +62,31 @@ import           Language.PureScript.Types               (Type (..))
 import qualified Options.Applicative                     as Opts
 
 vSpace :: Doc
-vSpace = PP.line <> PP.line
+vSpace = hardline <> hardline
 
 pprintModule :: Module -> Doc
 pprintModule (Module sourceSpan comments moduleName declarations exports) =
-    pretty comments PP.<$>
-        text "module" <+> pretty moduleName <+> pretty exports <+> text "where" <> vSpace <> vsep (fmap pretty declarations)
+    comments'
+    <> text "module"
+    <+> pretty moduleName
+    <> exports'
+    <+> text "where"
+    <> vSpace
+    <> vsep (fmap pretty declarations)
+    <> hardline
+    where
+        comments'
+            | null comments = empty
+            | otherwise = vsep (fmap pretty comments) <> hardline
+        exports' = case exports of
+            Nothing -> empty
+            Just refs ->
+                space
+                PP.<$> PP.indent indentationLevel (makeList (fmap pretty refs))
+        makeList docs = case docs of
+            [] -> parens PP.line
+            x : xs ->
+                parens (space <> vcat (x : fmap ((comma <> space) <>) xs) <> PP.line)
 
 data Config = Config
   { input  :: String
@@ -89,7 +109,7 @@ runFormatter (Config i o) = do
     case parseModulesFromFiles id [("Main", inputFile)] of
             Right v -> do
                 let [(_, Module _ _ _ declarations _)] = v
-                writeFile o $ displayS (renderPretty 0.9 120 . vsep $ fmap (\(_, m) -> pprintModule m) v) ""
+                writeFile o $ displayS (renderPretty 0.9 80 . vsep $ fmap (\(_, m) -> pprintModule m) v) ""
             Left e ->
                 putStrLn $ P.prettyPrintMultipleErrors P.defaultPPEOptions e
 runFormatter _ = return ()
