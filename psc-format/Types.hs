@@ -35,7 +35,7 @@ instance Pretty Type where
     pretty (TypeApp t s) = pretty t <+> pretty s
     pretty row@RCons{} = prettyPrintRowWith '(' ')' row
     pretty (TypeOp op) = text $ showQualified runOpName op
-    pretty (BinaryNoParensType op l r) = pretty l <> text " " <> pretty op <> text " " <> pretty r
+    pretty (BinaryNoParensType op l r) = pretty l <+> pretty op <+> pretty r
     pretty (ParensInType typ) = parens $ pretty typ
     pretty (ForAll s t _) = ppForAll s t []
     pretty (ConstrainedType constraints typ) =
@@ -58,7 +58,7 @@ ppForAll typeVar typ vars =
         ForAll s t _ ->
             ppForAll s t $ typeVar : vars
         _ ->
-            text "forall" <+> typeVars <> text "." <+> group (pretty typ)
+            text "forall" <+> typeVars <> dot <+> group (pretty typ)
             where
                 typeVars = text . unwords $ typeVar : vars
 

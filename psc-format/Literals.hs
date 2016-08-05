@@ -21,6 +21,6 @@ instance Pretty a => Pretty (Literal a) where
         prettyEncloseSep lbracket rbracket (fmap pretty vs)
     pretty (ObjectLiteral os) =
         prettyEncloseSep
-            (char '{')
-            (char '}')
-            (fmap (\(key, val) -> text key <> char ':' <+> pretty val) os)
+            lbrace
+            rbrace
+            (fmap (\(key, val) -> text key <> colon <+> pretty val) os)

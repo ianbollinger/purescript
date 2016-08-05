@@ -1,6 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Declarations () where
+module Declarations
+    ( prettyDecl
+    ) where
 
 import Prelude hiding ((<$>))
 import Data.List (intersperse)
@@ -25,11 +27,11 @@ printAbs :: Ident -> Expr -> Bool -> Doc
 printAbs arg val isFirstAbs =
     case (val, isFirstAbs) of
         (Abs (Left argN) valN, True) ->
-            text "\\" <> text (showIdent arg) <+> printAbs argN valN False
+            backslash <> text (showIdent arg) <+> printAbs argN valN False
         (_, True) ->
-            text "\\" <> pretty (showIdent arg) <+> text "->" <+> pretty val
+            backslash <> text (showIdent arg) <+> text "->" <+> pretty val
         _ ->
-            text "" <> pretty (showIdent arg) <+> text "->" <+> pretty val
+            text (showIdent arg) <+> text "->" <+> pretty val
 
 instance Pretty DeclarationRef where
     pretty (TypeRef properName ns) =
@@ -59,9 +61,12 @@ instance Pretty DeclarationRef where
     prettyList = prettyTupled . fmap pretty
 
 instance Pretty Declaration where
-    pretty (DataDeclaration dataDeclType properName lT constructors) =
-        hardline
-        <> text dataLabel
+    pretty = prettyDecl False
+
+prettyDecl :: Bool -> Declaration -> Doc
+prettyDecl topLevel decl = case decl of
+    DataDeclaration dataDeclType properName lT constructors ->
+        text dataLabel
         <+> pretty properName
         <> leftTypes
         <> constructors'
@@ -77,29 +82,28 @@ instance Pretty Declaration where
                 | null constructors = empty
                 | otherwise =
                     space
-                    <> text "="
+                    <> equals
                     <+> hsep (intersperse (text "|") (fmap formatConstructor constructors))
             formatConstructor (n, ts) = pretty n <> ts'
                 where
                     ts'
                         | null ts = empty
                         | otherwise = space <> hsep (fmap pretty ts)
-    pretty (DataBindingGroupDeclaration _declarations) =
+    DataBindingGroupDeclaration _declarations ->
         text "DataBindingGroupDeclaration"
-    pretty (TypeSynonymDeclaration propertyName params typ) =
-        hardline
-        <> text "type"
+    TypeSynonymDeclaration propertyName params typ ->
+        text "type"
         <+> pretty propertyName
         <> params'
-        <+> text "="
+        <+> equals
         <+> pretty typ
         where
             params'
                 | null params = empty
                 | otherwise = space <> ppTypeList params
-    pretty (TypeDeclaration ident typ) =
+    TypeDeclaration ident typ ->
         nest indentationLevel (pretty ident </> text "::" <+> pretty typ)
-    pretty (ValueDeclaration ident _nameKind binders expr) =
+    ValueDeclaration ident _nameKind binders expr ->
         pretty ident <> binders' <> body
         where
             body = case expr of
@@ -109,7 +113,7 @@ instance Pretty Declaration where
                 Right expression ->
                     nest indentationLevel
                       ( space
-                      <> text "="
+                      <> equals
                       </> pretty expression
                       )
             binders' = case binders of
@@ -117,24 +121,22 @@ instance Pretty Declaration where
                 _ -> space <> prettyList binders
             printGuardExpr (guard, expr') =
                 nest indentationLevel
-                  ( text "|"
+                  ( char '|'
                   <+> pretty guard
-                  <+> text "="
+                  <+> equals
                   </> pretty expr'
                   )
-    pretty (BindingGroupDeclaration _is) = text "BindingGroupDeclaration"
-    pretty (ExternDeclaration tdent typ) =
-        hardline
-        <> nest indentationLevel
+    BindingGroupDeclaration _is -> text "BindingGroupDeclaration"
+    ExternDeclaration tdent typ ->
+        nest indentationLevel
           ( text "foreign"
           <+> text "import"
           <+> pretty tdent
           </> text "::"
           <+> pretty typ
           )
-    pretty (ExternDataDeclaration properName kin) =
-        hardline
-        <> nest indentationLevel
+    ExternDataDeclaration properName kin ->
+        nest indentationLevel
           ( text "foreign"
           <+> text "import"
           <+> text "data"
@@ -142,18 +144,18 @@ instance Pretty Declaration where
           </> text "::"
           <+> pretty kin
           )
-    pretty (FixityDeclaration fixity) = hardline <> case fixity of
-        Left valueFixity -> pretty valueFixity
-        Right typeFixity -> pretty typeFixity
-    pretty (ImportDeclaration moduleName importDeclarationType qualifiedModuleName) =
+    FixityDeclaration fixity ->
+        case fixity of
+            Left valueFixity -> pretty valueFixity
+            Right typeFixity -> pretty typeFixity
+    ImportDeclaration moduleName importDeclarationType qualifiedModuleName ->
         text "import" <+> pretty moduleName <> importBody
         where
             importBody = case qualifiedModuleName of
                 Nothing -> pretty importDeclarationType
                 Just qualifiedModuleName' -> pretty importDeclarationType <+> text "as" <+> pretty qualifiedModuleName'
-    pretty (TypeClassDeclaration properName a constraints declarations) =
-        hardline
-        <> text "class"
+    TypeClassDeclaration properName a constraints declarations ->
+        text "class"
         <> constraints'
         <+> pretty properName
         <+> ppTypeList a
@@ -170,12 +172,11 @@ instance Pretty Declaration where
                     space
                     <> parens (listify (fmap pretty constraints))
                     <+> text "<="
-    pretty (TypeInstanceDeclaration ident constraints qualified types body) =
+    TypeInstanceDeclaration ident constraints qualified types body ->
         case body of
-            DerivedInstance -> hardline <> text "derive" <+> header
+            DerivedInstance -> text "derive" <+> header
             ExplicitInstance declarations ->
-                hardline
-                <> header
+                header
                 <+> text "where"
                 <$> indent indentationLevel (vsep (fmap pretty declarations))
         where
@@ -196,9 +197,14 @@ instance Pretty Declaration where
                     space
                     <> parens (listify (fmap pretty constraints))
                     <+> text "=>"
-    pretty (PositionedDeclaration _sourceSpan comments declaration) =
-        comments' <> pretty declaration
+    PositionedDeclaration _sourceSpan comments declaration ->
+        potentialNewLine <> comments' <> pretty declaration
         where
+            potentialNewLine
+                | not topLevel = empty
+                | otherwise = case declaration of
+                    ImportDeclaration{} -> empty
+                    _ -> hardline
             comments'
                 | null comments = empty
                 | otherwise = vsep (fmap pretty comments) <> hardline
@@ -224,11 +230,18 @@ instance Pretty Expr where
     pretty (UnaryMinus expr) = text "-" <> pretty expr
     pretty (BinaryNoParens op left right) = pretty left <+> pretty op <+> pretty right
     pretty (Parens expr) = parens $ pretty expr
-    pretty (ObjectGetter s) = text "_." <> text s
+    pretty (ObjectGetter s) = text ("_." ++ s)
     pretty (Accessor field expr) = pretty expr <> dot <> pretty field
-    pretty (ObjectUpdate o ps) = pretty o <+> text "{" <+> listify (fmap (\(key, val) -> text key <+> text "=" <+> pretty val) ps) <+> text "}"
+    pretty (ObjectUpdate o ps) =
+        pretty o
+        <+> lbrace
+        <+> listify (fmap (\(key, val) -> text key <+> equals <+> pretty val) ps)
+        <+> rbrace
     pretty (Abs (Left arg) val) = printAbs arg val True
-    pretty (Abs (Right arg) val) = text "\\" <> text (prettyPrintBinder arg) <+> text "->" PP.<$> PP.indent indentationLevel (pretty val)
+    pretty (Abs (Right arg) val) =
+        text ('\\' : prettyPrintBinder arg)
+        <+> text "->"
+        <$> indent indentationLevel (pretty val)
     pretty (App expr1 expr2) = pretty expr1 <+> pretty expr2
     pretty (Var qualified) = pretty qualified
     pretty (Op qualified) = pretty qualified
@@ -263,7 +276,7 @@ instance Pretty Expr where
     pretty (SuperClassDictionary _qualified _types) =
         text "SuperClassDictionary"
     pretty AnonymousArgument = text "_"
-    pretty (Hole hole) = text "?" <> text hole
+    pretty (Hole hole) = text ("?" ++ hole)
     pretty (PositionedValue _sourceSpan comments expr) =
       comments' <> pretty expr
       where

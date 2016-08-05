@@ -15,7 +15,8 @@ wide :: (Doc -> Doc) -> [Doc] -> Doc
 wide surround = surround . hcat . punctuate (text ", ")
 
 skinny :: (Doc -> Doc) -> [Doc] -> Doc
-skinny surround = surround . hcat . punctuate (char ',') . fmap (\x -> text " " <> x <> linebreak)
+skinny surround =
+    surround . hcat . punctuate comma . fmap (\x -> space <> x <> linebreak)
 
 listify :: [Doc] -> Doc
 listify = cat . punctuate (comma <> space)

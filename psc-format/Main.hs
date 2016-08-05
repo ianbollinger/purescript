@@ -29,9 +29,9 @@ import           Language.PureScript.AST.Declarations    (Module (Module))
 import           Language.PureScript.Parser.Declarations
 
 import           Config
-import           Names ()
-import           Declarations ()
-import           Comments ()
+import           Names                                   ()
+import           Declarations                            (prettyDecl)
+import           Comments                                ()
 
 vSpace :: Doc
 vSpace = hardline <> hardline
@@ -44,7 +44,7 @@ pprintModule (Module _sourceSpan comments moduleName declarations exports) =
     <> exports'
     <+> text "where"
     <> vSpace
-    <> vsep (fmap pretty declarations)
+    <> vsep (fmap (prettyDecl True) declarations)
     <> hardline
     where
         comments'
