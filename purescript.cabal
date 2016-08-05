@@ -402,6 +402,7 @@ executable psc-format
                    Config
                    Comments
                    Literals
+                   Module
                    Pretty
                    Types
     buildable: True
