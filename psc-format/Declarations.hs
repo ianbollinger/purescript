@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Declarations
-    ( prettyDecl
+    (
     ) where
 
 import Prelude hiding ((<$>))
@@ -60,157 +60,149 @@ instance Pretty DeclarationRef where
     prettyList = prettyTupled . fmap pretty
 
 instance Pretty Declaration where
-    pretty = prettyDecl False
-
-prettyDecl :: Bool -> Declaration -> Doc
-prettyDecl topLevel decl = case decl of
-    DataDeclaration dataDeclType properName lT constructors ->
-        nest indentationLevel
-            ( text dataLabel
-            <+> pretty properName
-            <> leftTypes
-            <> constructors'
-            )
-        where
-            dataLabel =
-                case dataDeclType of
-                    Data -> "data"
-                    Newtype -> "newtype"
-            leftTypes
-                | null lT = empty
-                | otherwise = space <> ppTypeList lT
-            constructors' = case constructors of
-                [] -> empty
-                [x] -> space <> equals <+> formatConstructor x
-                x : xs ->
-                    empty
-                    <$> equals
-                    <+> formatConstructor x
-                    <$> vsep (fmap (\c -> char '|' <+> formatConstructor c) xs)
-            formatConstructor (n, ts) = pretty n <> ts'
-                where
-                    ts'
-                        | null ts = empty
-                        | otherwise = space <> hsep (fmap pretty ts)
-    DataBindingGroupDeclaration _declarations ->
-        text "DataBindingGroupDeclaration"
-    TypeSynonymDeclaration propertyName params typ ->
-        text "type"
-        <+> pretty propertyName
-        <> params'
-        <+> equals
-        <+> pretty typ
-        where
-            params'
-                | null params = empty
-                | otherwise = space <> ppTypeList params
-    TypeDeclaration ident typ ->
-        nest indentationLevel (pretty ident </> text "::" <+> pretty typ)
-    ValueDeclaration ident _nameKind binders expr ->
-        pretty ident <> binders' <> body
-        where
-            body = case expr of
-                Left exprs ->
-                    empty
-                    <$> indent indentationLevel (vsep (fmap printGuardExpr exprs))
-                Right expression ->
+    pretty decl = case decl of
+        DataDeclaration dataDeclType properName lT constructors ->
+            nest indentationLevel
+                ( text dataLabel
+                <+> pretty properName
+                <> leftTypes
+                <> constructors'
+                )
+            where
+                dataLabel =
+                    case dataDeclType of
+                        Data -> "data"
+                        Newtype -> "newtype"
+                leftTypes
+                    | null lT = empty
+                    | otherwise = space <> ppTypeList lT
+                constructors' = case constructors of
+                    [] -> empty
+                    [x] -> space <> equals <+> formatConstructor x
+                    x : xs ->
+                        empty
+                        <$> equals
+                        <+> formatConstructor x
+                        <$> vsep (fmap (\c -> char '|' <+> formatConstructor c) xs)
+                formatConstructor (n, ts) = pretty n <> ts'
+                    where
+                        ts'
+                            | null ts = empty
+                            | otherwise = space <> hsep (fmap pretty ts)
+        DataBindingGroupDeclaration _declarations ->
+            text "DataBindingGroupDeclaration"
+        TypeSynonymDeclaration propertyName params typ ->
+            text "type"
+            <+> pretty propertyName
+            <> params'
+            <+> equals
+            <+> pretty typ
+            where
+                params'
+                    | null params = empty
+                    | otherwise = space <> ppTypeList params
+        TypeDeclaration ident typ ->
+            nest indentationLevel (pretty ident </> text "::" <+> pretty typ)
+        ValueDeclaration ident _nameKind binders expr ->
+            pretty ident <> binders' <> body
+            where
+                body = case expr of
+                    Left exprs ->
+                        empty
+                        <$> indent indentationLevel (vsep (fmap printGuardExpr exprs))
+                    Right expression ->
+                        nest indentationLevel
+                          ( space
+                          <> equals
+                          </> pretty expression
+                          )
+                binders' = case binders of
+                    [] -> PP.empty
+                    _ -> space <> prettyList binders
+                printGuardExpr (guard, expr') =
                     nest indentationLevel
-                      ( space
-                      <> equals
-                      </> pretty expression
+                      ( char '|'
+                      <+> pretty guard
+                      <+> equals
+                      </> pretty expr'
                       )
-            binders' = case binders of
-                [] -> PP.empty
-                _ -> space <> prettyList binders
-            printGuardExpr (guard, expr') =
-                nest indentationLevel
-                  ( char '|'
-                  <+> pretty guard
-                  <+> equals
-                  </> pretty expr'
-                  )
-    BindingGroupDeclaration _is -> text "BindingGroupDeclaration"
-    ExternDeclaration tdent typ ->
-        nest indentationLevel
-          ( text "foreign"
-          <+> text "import"
-          <+> pretty tdent
-          </> text "::"
-          <+> pretty typ
-          )
-    ExternDataDeclaration properName kin ->
-        nest indentationLevel
-          ( text "foreign"
-          <+> text "import"
-          <+> text "data"
-          <+> pretty properName
-          </> text "::"
-          <+> pretty kin
-          )
-    FixityDeclaration fixity ->
-        case fixity of
-            Left valueFixity -> pretty valueFixity
-            Right typeFixity -> pretty typeFixity
-    ImportDeclaration moduleName importDeclarationType qualifiedModuleName ->
-        text "import" <+> pretty moduleName <> importBody
-        where
-            importBody = case qualifiedModuleName of
-                Nothing -> pretty importDeclarationType
-                Just qualifiedModuleName' -> pretty importDeclarationType <+> text "as" <+> pretty qualifiedModuleName'
-    TypeClassDeclaration properName a constraints declarations ->
-        text "class"
-        <> constraints'
-        <+> pretty properName
-        <+> ppTypeList a
-        <+> text "where"
-        <$> indent indentationLevel (vsep (fmap pretty declarations))
-        where
-            constraints'
-                | null constraints = empty
-                | length constraints == 1 =
-                    space
-                    <> pretty (head constraints)
-                    <+> text "<="
-                | otherwise =
-                    space
-                    <> parens (listify (fmap pretty constraints))
-                    <+> text "<="
-    TypeInstanceDeclaration ident constraints qualified types body ->
-        case body of
-            DerivedInstance -> text "derive" <+> header
-            ExplicitInstance declarations ->
-                header
-                <+> text "where"
-                <$> indent indentationLevel (vsep (fmap pretty declarations))
-        where
-            header =
-                text "instance"
-                <+> pretty ident
-                <+> text "::"
-                <> constraints'
-                <+> pretty qualified
-                <+> pretty (head types)
-            constraints'
-                | null constraints = empty
-                | length constraints == 1 =
-                    space
-                    <> pretty (head constraints)
-                    <+> text "=>"
-                | otherwise =
-                    space
-                    <> parens (listify (fmap pretty constraints))
-                    <+> text "=>"
-    PositionedDeclaration _sourceSpan comments declaration ->
-        potentialNewLine <> comments' <> pretty declaration
-        where
-            potentialNewLine
-                | not topLevel = empty
-                | otherwise = case declaration of
-                    ImportDeclaration{} -> empty
-                    _ -> hardline
-            comments'
-                | null comments = empty
-                | otherwise = vsep (fmap pretty comments) <> hardline
+        BindingGroupDeclaration _is -> text "BindingGroupDeclaration"
+        ExternDeclaration tdent typ ->
+            nest indentationLevel
+              ( text "foreign"
+              <+> text "import"
+              <+> pretty tdent
+              </> text "::"
+              <+> pretty typ
+              )
+        ExternDataDeclaration properName kin ->
+            nest indentationLevel
+              ( text "foreign"
+              <+> text "import"
+              <+> text "data"
+              <+> pretty properName
+              </> text "::"
+              <+> pretty kin
+              )
+        FixityDeclaration fixity ->
+            case fixity of
+                Left valueFixity -> pretty valueFixity
+                Right typeFixity -> pretty typeFixity
+        ImportDeclaration moduleName importDeclarationType qualifiedModuleName ->
+            text "import" <+> pretty moduleName <> importBody
+            where
+                importBody = case qualifiedModuleName of
+                    Nothing -> pretty importDeclarationType
+                    Just qualifiedModuleName' -> pretty importDeclarationType <+> text "as" <+> pretty qualifiedModuleName'
+        TypeClassDeclaration properName a constraints declarations ->
+            text "class"
+            <> constraints'
+            <+> pretty properName
+            <+> ppTypeList a
+            <+> text "where"
+            <$> indent indentationLevel (vsep (fmap pretty declarations))
+            where
+                constraints'
+                    | null constraints = empty
+                    | length constraints == 1 =
+                        space
+                        <> pretty (head constraints)
+                        <+> text "<="
+                    | otherwise =
+                        space
+                        <> parens (listify (fmap pretty constraints))
+                        <+> text "<="
+        TypeInstanceDeclaration ident constraints qualified types body ->
+            case body of
+                DerivedInstance -> text "derive" <+> header
+                ExplicitInstance declarations ->
+                    header
+                    <+> text "where"
+                    <$> indent indentationLevel (vsep (fmap pretty declarations))
+            where
+                header =
+                    text "instance"
+                    <+> pretty ident
+                    <+> text "::"
+                    <> constraints'
+                    <+> pretty qualified
+                    <+> pretty (head types)
+                constraints'
+                    | null constraints = empty
+                    | length constraints == 1 =
+                        space
+                        <> pretty (head constraints)
+                        <+> text "=>"
+                    | otherwise =
+                        space
+                        <> parens (listify (fmap pretty constraints))
+                        <+> text "=>"
+        PositionedDeclaration _sourceSpan comments declaration ->
+            comments' <> pretty declaration
+            where
+                comments'
+                    | null comments = empty
+                    | otherwise = vsep (fmap pretty comments) <> hardline
 
 instance Pretty ValueFixity where
     pretty (ValueFixity fixity (Qualified module' identOrConstructor) opName) =
