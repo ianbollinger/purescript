@@ -5,7 +5,6 @@ module Declarations
     ) where
 
 import Prelude hiding ((<$>))
-import Data.List (intersperse)
 
 import Text.PrettyPrint.ANSI.Leijen as PP
 
@@ -66,10 +65,12 @@ instance Pretty Declaration where
 prettyDecl :: Bool -> Declaration -> Doc
 prettyDecl topLevel decl = case decl of
     DataDeclaration dataDeclType properName lT constructors ->
-        text dataLabel
-        <+> pretty properName
-        <> leftTypes
-        <> constructors'
+        nest indentationLevel
+            ( text dataLabel
+            <+> pretty properName
+            <> leftTypes
+            <> constructors'
+            )
         where
             dataLabel =
                 case dataDeclType of
@@ -78,12 +79,14 @@ prettyDecl topLevel decl = case decl of
             leftTypes
                 | null lT = empty
                 | otherwise = space <> ppTypeList lT
-            constructors'
-                | null constructors = empty
-                | otherwise =
-                    space
-                    <> equals
-                    <+> hsep (intersperse (text "|") (fmap formatConstructor constructors))
+            constructors' = case constructors of
+                [] -> empty
+                [x] -> space <> equals <+> formatConstructor x
+                x : xs ->
+                    empty
+                    <$> equals
+                    <+> formatConstructor x
+                    <$> vsep (fmap (\c -> char '|' <+> formatConstructor c) xs)
             formatConstructor (n, ts) = pretty n <> ts'
                 where
                     ts'
