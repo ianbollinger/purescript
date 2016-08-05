@@ -92,11 +92,13 @@ instance Pretty Declaration where
         DataBindingGroupDeclaration _declarations ->
             text "DataBindingGroupDeclaration"
         TypeSynonymDeclaration propertyName params typ ->
-            text "type"
-            <+> pretty propertyName
-            <> params'
-            <+> equals
-            <+> pretty typ
+            nest indentationLevel
+                ( text "type"
+                <+> pretty propertyName
+                <> params'
+                <+> equals
+                <+> pretty typ
+                )
             where
                 params'
                     | null params = empty

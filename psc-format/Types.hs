@@ -6,7 +6,7 @@ module Types
 
 import Prelude
 
-import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, text, parens, dot, empty, vcat, sep, (<+>), (<>), (</>), group)
+import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, char, text, parens, dot, empty, vcat, sep, (<+>), (<>), (</>), group, hardline)
 
 import Language.PureScript.Types
 import Language.PureScript.Names
@@ -70,17 +70,22 @@ prettyPrintRowWith open close = uncurry listToDoc . toList []
     where
         tailToPs :: Type -> Doc
         tailToPs REmpty = empty
-        tailToPs other = text "|" <+> pretty other
+        tailToPs other = char '|' <+> pretty other
 
         nameAndTypeToPs :: Char -> String -> Type -> Doc
-        nameAndTypeToPs start name ty = text (start : ' ' : name ++ " :: ") <> pretty ty
+        nameAndTypeToPs start name ty =
+            text (start : ' ' : name ++ " :: ") <> pretty ty
 
         listToDoc :: [(String, Type)] -> Type -> Doc
         listToDoc [] REmpty = text [open, close]
-        listToDoc [] rest = text [ open, ' ' ] <> tailToPs rest <> text [ ' ', close ]
-        listToDoc ts rest = vcat $ zipWith (\(nm, ty) i -> nameAndTypeToPs (if i == 0 then open else ',') nm ty) ts [0 :: Int ..] ++
-            [ tailToPs rest, text [close] ]
+        listToDoc [] rest = char open <+> tailToPs rest <+> char close
+        listToDoc ts rest =
+            hardline
+            <> vcat (zipWith (\(nm, ty) i -> nameAndTypeToPs (if i == 0 then open else ',') nm ty) ts [0 :: Int ..] ++ tail' rest ++ [char close])
+            where
+                tail' REmpty = []
+                tail' _ = [tailToPs rest]
 
         toList :: [(String, Type)] -> Type -> ([(String, Type)], Type)
-        toList tys (RCons name ty row) = toList ((name, ty):tys) row
+        toList tys (RCons name ty row) = toList ((name, ty) :tys) row
         toList tys r = (reverse tys, r)
