@@ -1,80 +1,99 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Types
-    ( ppTypeList
+    ( prettyType
+    , prettyConstraint
+    , prettyTypeList
     ) where
 
-import Prelude
+import Prelude hiding ((<$>))
 
-import Text.PrettyPrint.ANSI.Leijen (Pretty, pretty, Doc, char, text, parens, dot, empty, vcat, sep, (<+>), (<>), (</>), group, hardline)
+import Text.PrettyPrint.ANSI.Leijen
 
-import Language.PureScript.Types
-import Language.PureScript.Names
-import qualified Language.PureScript.Kinds as KK
+import Language.PureScript.Types (Constraint(..), Type(..))
+import Language.PureScript.Names (ProperName(ProperName), Qualified(Qualified),
+                                  runOpName, runProperName, showQualified)
+import Language.PureScript.Kinds (Kind)
 
-import Kind ()
+import Config (Config)
+import Kind (prettyKind)
 import Names ()
-import Pretty
+import Pretty (listify)
+import Symbols (doubleColon, forall, pipe, rightArrow, rightFatArrow,
+                underscore)
 
--- https://github.com/purescript/purescript/blob/f6f4de900a5e1705a3356e60b2d8d3589eb7d68d/src/Language/PureScript/Pretty/Types.hs#L28-L39
-instance Pretty Type where
-    pretty (TypeWildcard _) = text "_"
-    pretty (TypeVar var) = text var
-    pretty (TypeLevelString s) = text $ show s ++ "TypeLevelString"
-    pretty (PrettyPrintObject row) = prettyPrintRowWith '{' '}' row
-    pretty (TypeConstructor (Qualified moduleName properName)) =
+prettyType :: Config -> Type -> Doc
+prettyType config t' = case t' of
+    TypeWildcard _ -> underscore
+    TypeVar var -> text var
+    TypeLevelString s -> text $ show s ++ "TypeLevelString"
+    PrettyPrintObject row -> prettyRowWith config '{' '}' row
+    TypeConstructor (Qualified moduleName properName) ->
         case moduleName of
-            Nothing -> text $ runProperName properName
-            Just moduleN -> pretty moduleN <> dot <> text (runProperName properName)
-    pretty (TUnknown u) = text $ '_' : show u
-    pretty (Skolem name s _ _) = text $ name ++ show s ++ "skolem"
-    pretty REmpty = text "()"
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s) = prettyPrintRowWith '{' '}' s
-    pretty (TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s) =
-        pretty s </> text "->"
-    pretty (TypeApp t s) = pretty t <+> pretty s
-    pretty row@RCons{} = prettyPrintRowWith '(' ')' row
-    pretty (TypeOp op) = text $ showQualified runOpName op
-    pretty (BinaryNoParensType op l r) = pretty l <+> pretty op <+> pretty r
-    pretty (ParensInType typ) = parens $ pretty typ
-    pretty (ForAll s t _) = ppForAll s t []
-    pretty (ConstrainedType constraints typ) =
-        constraints' </> text "=>" <+> pretty typ
+            Nothing -> pretty properName
+            Just moduleN ->
+                pretty moduleN <> dot <> text (runProperName properName)
+    TUnknown u -> text $ '_' : show u
+    Skolem name s _ _ -> text $ name ++ show s ++ "skolem"
+    REmpty -> text "()"
+    TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
+        prettyRowWith config '{' '}' s
+    TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s ->
+        prettyType config s </> rightArrow config
+    TypeApp t s -> prettyType config t <+> prettyType config s
+    row@RCons{} -> prettyRowWith config '(' ')' row
+    TypeOp op -> text $ showQualified runOpName op
+    BinaryNoParensType op l r ->
+        prettyType config l <+> prettyType config op <+> prettyType config r
+    ParensInType typ -> parens (prettyType config typ)
+    ForAll s t _ -> prettyForAll config s t []
+    ConstrainedType constraints typ ->
+        constraints' </> rightFatArrow config <+> prettyType config typ
         where
             constraints'
-                | length constraints == 1 = pretty (head constraints)
-                | otherwise = parens (listify (fmap pretty constraints))
-    pretty (KindedType typ kind) = pretty typ <+> text "::" <+> pretty kind
-    pretty (PrettyPrintFunction _typ1 _typ2) = text "PrettyPrintFunction"
-    pretty (PrettyPrintForAll _xs _typ) = text "PrettyPrintForall"
+                | length constraints == 1 =
+                    prettyConstraint config (head constraints)
+                | otherwise =
+                    parens (listify (fmap (prettyConstraint config) constraints))
+    KindedType typ kind ->
+        prettyType config typ <+> doubleColon config <+> prettyKind config kind
+    PrettyPrintFunction _typ1 _typ2 -> text "PrettyPrintFunction"
+    PrettyPrintForAll _xs _typ -> text "PrettyPrintForall"
 
-instance Pretty Constraint where
-    pretty (Constraint class' args _data) =
-        pretty class' <+> sep (fmap pretty args)
+prettyConstraint :: Config -> Constraint -> Doc
+prettyConstraint config (Constraint class' args _data) =
+    pretty class' <+> sep (fmap (prettyType config) args)
 
-ppForAll :: String -> Type -> [String] -> Doc
-ppForAll typeVar typ vars =
+prettyForAll :: Config -> String -> Type -> [String] -> Doc
+prettyForAll config typeVar typ vars =
     case typ of
         ForAll s t _ ->
-            ppForAll s t $ typeVar : vars
+            prettyForAll config s t (typeVar : vars)
         _ ->
-            text "forall" <+> typeVars <> dot <+> group (pretty typ)
+            forall config <+> typeVars <> dot <+> group (prettyType config typ)
             where
                 typeVars = text . unwords $ typeVar : vars
 
-ppTypeList :: [(String, Maybe KK.Kind)] -> Doc
-ppTypeList = sep . fmap (\(s, kind) -> text s <> pretty kind)
+prettyTypeList :: Config -> [(String, Maybe Kind)] -> Doc
+prettyTypeList config = sep . fmap go
+    where
+        go (s, kind) = case kind of
+            Nothing -> text s
+            Just kind' ->
+                text s <+> doubleColon config <+> prettyKind config kind'
 
-prettyPrintRowWith :: Char -> Char -> Type -> Doc
-prettyPrintRowWith open close = uncurry listToDoc . toList []
+prettyRowWith :: Config -> Char -> Char -> Type -> Doc
+prettyRowWith config open close = uncurry listToDoc . toList []
     where
         tailToPs :: Type -> Doc
         tailToPs REmpty = empty
-        tailToPs other = char '|' <+> pretty other
+        tailToPs other = pipe <+> prettyType config other
 
         nameAndTypeToPs :: Char -> String -> Type -> Doc
         nameAndTypeToPs start name ty =
-            text (start : ' ' : name ++ " :: ") <> pretty ty
+            text (start : ' ' : name)
+            <+> doubleColon config
+            <+> prettyType config ty
 
         listToDoc :: [(String, Type)] -> Type -> Doc
         listToDoc [] REmpty = text [open, close]
@@ -87,5 +106,5 @@ prettyPrintRowWith open close = uncurry listToDoc . toList []
                 tail' _ = [tailToPs rest]
 
         toList :: [(String, Type)] -> Type -> ([(String, Type)], Type)
-        toList tys (RCons name ty row) = toList ((name, ty) :tys) row
+        toList tys (RCons name ty row) = toList ((name, ty) : tys) row
         toList tys r = (reverse tys, r)

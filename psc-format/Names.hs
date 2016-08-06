@@ -3,27 +3,24 @@
 module Names where
 
 import Prelude
-import Data.List (intersperse)
 
-import Text.PrettyPrint.ANSI.Leijen as PP
+import Text.PrettyPrint.ANSI.Leijen
 
-import Language.PureScript.Names
+import Language.PureScript.Names (Ident, ModuleName, OpName, ProperName,
+                                  Qualified(Qualified), runIdent, runModuleName,
+                                  runProperName, runOpName)
 
 instance Pretty (ProperName a) where
     pretty = text . runProperName
 
 instance Pretty ModuleName where
-    pretty (ModuleName moduleName) =
-        foldl (PP.<>) PP.empty
-            . intersperse dot
-            $ map pretty moduleName
+    pretty = text . runModuleName
 
 instance Pretty Ident where
-    pretty (Ident i) = text i
-    pretty (GenIdent _mstring _int) = text "genIdent"
+    pretty = text . runIdent
 
 instance Pretty (OpName a) where
-    pretty (OpName name) = text name
+    pretty = text . runOpName
 
 instance Pretty a => Pretty (Qualified a) where
     pretty (Qualified mN n) =
@@ -32,4 +29,4 @@ instance Pretty a => Pretty (Qualified a) where
             moduleName =
                 case mN of
                     Just name -> pretty name <> dot
-                    Nothing -> text ""
+                    Nothing -> empty

@@ -1,6 +1,13 @@
-module Config where
+module Config
+    ( Config(..)
+    ) where
 
-import Prelude (Int)
+import Prelude
 
-indentationLevel :: Int
-indentationLevel = 2
+data Config = Config
+    { configInput :: String
+    , configOutput :: Maybe String
+    , configIndent :: Int
+    , configWidth :: Int
+    , configUnicode :: Bool
+    }

@@ -1,16 +1,22 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Kind
+    ( prettyKind
+    ) where
 
-module Kind where
+import Text.PrettyPrint.ANSI.Leijen
 
-import Text.PrettyPrint.ANSI.Leijen (Pretty, (<+>), pretty, text)
+import Language.PureScript.Kinds (Kind(..))
 
-import Language.PureScript.Kinds
+import Config (Config)
+import Symbols (rightArrow)
 
-instance Pretty Kind where
-    pretty k = case k of
-        KUnknown a -> text "KUnknown" <+> pretty a
-        Star -> text "*"
-        Bang -> text "!"
-        Row kind -> text "#" <+> pretty kind
-        FunKind kind1 kind2 -> pretty kind1 <+> text "->" <+> pretty kind2
-        Symbol -> text "Symbol"
+prettyKind :: Config -> Kind -> Doc
+prettyKind config k = case k of
+    KUnknown a -> char 'u' <> pretty a
+    Star -> char '*'
+    Bang -> char '!'
+    Row kind -> char '#' <+> prettyKind config kind
+    FunKind kind1 kind2 ->
+        prettyKind config kind1
+        </> rightArrow config
+        <+> prettyKind config kind2
+    Symbol -> text "Symbol"

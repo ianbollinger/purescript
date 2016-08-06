@@ -398,12 +398,11 @@ executable psc-format
     other-modules: Names
                    Declarations
                    Kind
-                   Binder
                    Config
                    Comments
-                   Literals
                    Module
                    Pretty
+                   Symbols
                    Types
     buildable: True
     hs-source-dirs: psc-format

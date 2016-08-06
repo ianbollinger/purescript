@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 -----------------------------------------------------------------------------
 --
 -- Module      :  Main
@@ -25,52 +27,66 @@ import Options.Applicative
 
 import qualified Language.PureScript as P
 
-import Module (pprintModule)
-
-data Config = Config
-  { _input  :: String
-  , _output :: Maybe String
-  }
+import Config (Config(..))
+import Module (prettyModule)
 
 config :: Parser Config
 config = Config
-    <$> strOption
-        ( long "input"
-        <> short 'i'
-        <> metavar "FILE"
-        <> help "Specify path to input file"
+    <$> strArgument
+        ( metavar "FILE"
+        <> help "Path to input file"
         )
     <*> optional
         ( strOption
             ( long "output"
             <> short 'o'
             <> metavar "FILE"
-            <> help "Specify path to output file"
+            <> help "Path to output file"
             )
+        )
+    <*> option auto
+        ( long "indent"
+        <> short 'i'
+        <> metavar "WIDTH"
+        <> value 2
+        <> help "Indentation level (default: 2)"
+        )
+    <*> option auto
+        ( long "width"
+        <> short 'w'
+        <> metavar "WIDTH"
+        <> value 80
+        <> help "Column at which to wrap long lines (default: 80)"
+        )
+    <*> switch
+        ( long "unicode"
+        <> short 'u'
+        <> help "Use Unicode symbols where possible"
         )
 
 runFormatter :: Config -> IO ()
-runFormatter (Config i o) = do
-    hSetEncoding stdout utf8
-    hSetEncoding stderr utf8
-    inputFile <- readFile i
+runFormatter config'@Config{..} = do
+    inputFile <- readFile configInput
     case P.parseModulesFromFiles id [("Main", inputFile)] of
-        Right v -> do
-            case o of
+        Right v ->
+            case configOutput of
                 Nothing -> putStrLn output
                 Just o' -> writeFile o' output
             where
                 output =
-                    displayS (renderPretty 0.9 80 . vsep $ fmap (\(_, m) -> pprintModule m) v) ""
+                    displayS (renderPretty 0.9 configWidth $ vsep $ fmap (\(_, m) -> prettyModule config' m) v) ""
         Left e -> do
             hPutStrLn stderr (P.prettyPrintMultipleErrors P.defaultPPEOptions e)
             exitFailure
 
 main :: IO ()
-main = execParser opts >>= runFormatter
+main = do
+    hSetEncoding stdout utf8
+    hSetEncoding stderr utf8
+    execParser opts >>= runFormatter
     where
         opts = info (helper <*> config)
             ( fullDesc
-            <> progDesc "Run this program to format a purs file. "
+            <> progDesc "Run this program to format a purs file."
             <> header "psc-format - Format PureScript files"
             )

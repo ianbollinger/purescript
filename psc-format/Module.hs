@@ -1,5 +1,7 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Module
-    ( pprintModule
+    ( prettyModule
     ) where
 
 import Prelude hiding ((<$>))
@@ -13,26 +15,26 @@ import Text.PrettyPrint.ANSI.Leijen
 
 import Config
 import Names ()
-import Declarations ()
+import Declarations (prettyDeclaration)
 import Comments ()
 
 vSpace :: Doc
 vSpace = hardline <> hardline
 
-pprintModule :: Module -> Doc
-pprintModule (Module _sourceSpan comments moduleName declarations exports) =
+prettyModule :: Config -> Module -> Doc
+prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
     comments'
     <> text "module"
     <+> pretty moduleName
     <> exports'
     <+> text "where"
     <> vSpace
-    <> vcat (fmap pretty (sortBy sorter imports'))
+    <> vcat (fmap (prettyDeclaration config) (sortBy sorter imports'))
     <> vSpace
-    <> pprintDecls decls'
+    <> prettyDeclarations config decls'
     <> hardline
     where
-        (imports', decls') = span isImport declarations
+        (imports', decls') = span isImport decls
         isImport decl = case decl of
             PositionedDeclaration _ _ ImportDeclaration{} -> True
             _ -> False
@@ -50,17 +52,20 @@ pprintModule (Module _sourceSpan comments moduleName declarations exports) =
             Nothing -> empty
             Just refs ->
                 space
-                <$> indent indentationLevel (makeList (fmap pretty refs))
+                <$> indent configIndent (makeList (fmap pretty refs))
         makeList docs = case docs of
             [] -> parens line
             x : xs ->
                 parens (space <> vcat (x : fmap ((comma <> space) <>) xs) <> line)
 
-pprintDecls :: [Declaration] -> Doc
-pprintDecls decls = case decls of
+prettyDeclarations :: Config -> [Declaration] -> Doc
+prettyDeclarations config decls = case decls of
     [] -> empty
-    [decl] -> pretty decl
+    [decl] -> prettyDeclaration config decl
     x@(PositionedDeclaration _ _ TypeDeclaration{}) : y@(PositionedDeclaration _ _ ValueDeclaration{}) : xs ->
-        pretty x <$> pretty y <$> hardline <> pprintDecls xs
+        prettyDeclaration config x
+        <$> prettyDeclaration config y
+        <$> hardline
+        <> prettyDeclarations config xs
     x : xs ->
-        pretty x <$> hardline <> pprintDecls xs
+        prettyDeclaration config x <$> hardline <> prettyDeclarations config xs
