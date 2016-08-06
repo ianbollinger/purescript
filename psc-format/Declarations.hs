@@ -24,7 +24,7 @@ import Kind (prettyKind)
 import Pretty (listify, prettyEncloseSep, prettyTupled)
 import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
-                rightFatArrow, underscore)
+                rightFatArrow, tick, underscore)
 
 printAbs :: Config -> Ident -> Expr -> Bool -> Doc
 printAbs config arg val isFirstAbs =
@@ -246,8 +246,12 @@ prettyExpr config@Config{..} e = case e of
     UnaryMinus expr -> char '-' <> prettyExpr config expr
     BinaryNoParens op left right ->
         prettyExpr config left
-        <+> prettyExpr config op
+        <+> prettyOp op
         <+> prettyExpr config right
+        where
+            prettyOp o = case o of
+                Op name -> pretty name
+                expr -> tick <> prettyExpr config expr <> tick
     Parens expr -> parens (prettyExpr config expr)
     ObjectGetter s -> text ("_." ++ s)
     Accessor field expr -> prettyExpr config expr <> dot <> pretty field
