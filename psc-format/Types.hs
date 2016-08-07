@@ -19,6 +19,7 @@ import Language.PureScript.Types (Constraint(..), Type(..))
 import Language.PureScript.Names (ProperName(ProperName), Qualified(Qualified),
                                   runOpName, runProperName, showQualified)
 import Language.PureScript.Kinds (Kind)
+import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 import Config (Config)
 import Kind (prettyKind)
@@ -148,7 +149,9 @@ prettyRow config open close = uncurry listToDoc . toList []
 
 prettyNameAndType :: Config -> String -> Type -> Doc
 prettyNameAndType config name ty =
-    text name <+> doubleColon config <+> prettyType config ty
+    text (prettyPrintObjectKey name)
+    <+> doubleColon config
+    <+> prettyType config ty
 
 prettyTail :: Config -> Type -> Doc
 prettyTail config = \case

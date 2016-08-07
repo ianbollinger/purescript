@@ -17,6 +17,7 @@ import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.Operators (Fixity(..), showAssoc)
 import Language.PureScript.Environment (DataDeclType(..))
 import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
+import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 import Names ()
 import Types (prettyConstraints, prettyLongType, prettyLongTypes, prettyType,
@@ -230,7 +231,7 @@ prettyExpr config@Config{..} = \case
     ObjectUpdate o ps ->
         prettyExpr config o
         <+> lbrace
-        <+> listify (fmap (\(key, val) -> text key <+> equals <+> prettyExpr config val) ps)
+        <+> listify (fmap (\(key, val) -> text (prettyPrintObjectKey key) <+> equals <+> prettyExpr config val) ps)
         <+> rbrace
     Abs (Left arg) val -> prettyAbs config arg val True
     Abs (Right arg) val ->
@@ -331,7 +332,7 @@ prettyLiteralExpr config literal = case literal of
         prettyEncloseSep
             lbrace
             rbrace
-            (fmap (\(key, val) -> text key <> colon <+> prettyExpr config val) os)
+            (fmap (\(key, val) -> text (prettyPrintObjectKey key) <> colon <+> prettyExpr config val) os)
     _ -> prettyLiteral literal
 
 prettyLiteralBinder :: Config -> Literal Binder -> Doc
@@ -342,7 +343,7 @@ prettyLiteralBinder config literal = case literal of
         prettyEncloseSep
             lbrace
             rbrace
-            (fmap (\(key, val) -> text key <> colon <+> prettyBinder config val) os)
+            (fmap (\(key, val) -> text (prettyPrintObjectKey key) <> colon <+> prettyBinder config val) os)
     _ -> prettyLiteral literal
 
 prettyBinder :: Config -> Binder -> Doc
