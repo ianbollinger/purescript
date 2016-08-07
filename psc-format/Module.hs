@@ -48,7 +48,7 @@ prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
         exports' = case exports of
             Nothing -> empty
             Just refs ->
-                space
+                empty
                 <$> indent configIndent (makeList (fmap pretty refs))
         makeList docs = case docs of
             [] -> parens line
