@@ -24,7 +24,8 @@ import Types (prettyConstraints, prettyLongType, prettyLongTypes, prettyType,
               prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
-import Pretty (listify, prettyEncloseSep, prettyLongList, prettyTupled)
+import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList,
+               prettyTupled)
 import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
@@ -148,10 +149,12 @@ prettyDeclaration config@Config{..} = \case
             )
     FixityDeclaration fixity -> either pretty pretty fixity
     ImportDeclaration moduleName importDeclarationType qualifiedModuleName ->
-        text "import"
-        <+> pretty moduleName
-        <> pretty importDeclarationType
-        <> qualified
+        nest configIndent
+            ( text "import"
+            <+> pretty moduleName
+            <> pretty importDeclarationType
+            <> qualified
+            )
         where
             qualified = case qualifiedModuleName of
                 Nothing -> empty
@@ -285,8 +288,10 @@ prettyExpr config@Config{..} = \case
 instance Pretty ImportDeclarationType where
     pretty = \case
         Implicit -> empty
-        Explicit refs -> space <> prettyTupled (fmap pretty refs)
-        Hiding refs -> text "hiding" <+> tupled (fmap pretty refs)
+        Explicit refs ->
+            space <> prettyShortList lparen rparen (fmap pretty refs)
+        Hiding refs ->
+            text "hiding" <+> prettyShortList lparen rparen (fmap pretty refs)
 
 prettyDoNotationElement :: Config -> DoNotationElement -> Doc
 prettyDoNotationElement config@Config{..} = \case

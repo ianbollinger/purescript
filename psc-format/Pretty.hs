@@ -27,8 +27,13 @@ prettyEncloseSep :: Doc -> Doc -> [Doc] -> Doc
 prettyEncloseSep left right docs = case docs of
     [] -> left <> right
     x : xs ->
-        (hcat (left <> x : fmap (comma <+>) xs) <> right)
+        prettyShortList left right docs
         <|> prettyLongList left right docs
+
+prettyShortList :: Doc -> Doc -> [Doc] -> Doc
+prettyShortList left right = \case
+    [] -> left <> right
+    x : xs -> hcat (left <> x : fmap (comma </>) xs) <> right
 
 prettyLongList :: Doc -> Doc -> [Doc] -> Doc
 prettyLongList left right = \case
