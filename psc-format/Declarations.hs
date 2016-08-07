@@ -225,7 +225,7 @@ prettyExpr config@Config{..} = \case
     UnaryMinus expr -> char '-' <> prettyExpr config expr
     BinaryNoParens op left right ->
         prettyExpr config left
-        <+> prettyOp op
+        </> prettyOp op
         <+> prettyExpr config right
         where
             prettyOp = \case
