@@ -84,14 +84,15 @@ prettyDeclaration config@Config{..} = \case
                 | otherwise = space <> prettyTypeList config lT
             constructors' = case constructors of
                 [] -> empty
-                [x] -> space <> equals <+> formatConstructor x
+                [(n, ts)] ->
+                    space <> equals <+> pretty n <> prettyLongTypes config ts
                 x : xs ->
                     empty
                     <$> equals
                     <+> formatConstructor x
                     <$> vsep (fmap (\c -> pipe <+> formatConstructor c) xs)
             formatConstructor (n, ts) =
-                pretty n <> prettyLongTypes config ts
+                nest configIndent (pretty n <> prettyLongTypes config ts)
     DataBindingGroupDeclaration _declarations ->
         text "DataBindingGroupDeclaration"
     TypeSynonymDeclaration propertyName params typ ->
