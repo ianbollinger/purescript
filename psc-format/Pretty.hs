@@ -2,7 +2,7 @@
 
 module Pretty where
 
-import Prelude ((.), ($), (++), fmap)
+import Prelude ((.), ($), fmap)
 import Text.PrettyPrint.ANSI.Leijen
 
 (<|>) :: Doc -> Doc -> Doc
@@ -24,6 +24,13 @@ listify :: [Doc] -> Doc
 listify = cat . punctuate (comma <> space)
 
 prettyEncloseSep :: Doc -> Doc -> [Doc] -> Doc
-prettyEncloseSep l r = \case
-    [] -> empty
-    x : xs -> group (vcat (empty : l <+> x : fmap (comma <+>) xs) <$> r)
+prettyEncloseSep left right docs = case docs of
+    [] -> left <> right
+    x : xs ->
+        (hcat (left <> x : fmap (comma <+>) xs) <> right)
+        <|> prettyLongList left right docs
+
+prettyLongList :: Doc -> Doc -> [Doc] -> Doc
+prettyLongList left right = \case
+    [] -> left <> right
+    x : xs -> vcat (empty : left <+> x : fmap (comma <+>) xs) <$> right

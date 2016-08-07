@@ -24,7 +24,7 @@ import Types (prettyConstraints, prettyLongType, prettyLongTypes, prettyType,
               prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
-import Pretty (listify, prettyEncloseSep, prettyTupled)
+import Pretty (listify, prettyEncloseSep, prettyLongList, prettyTupled)
 import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
@@ -233,9 +233,11 @@ prettyExpr config@Config{..} = \case
     Accessor field expr -> prettyExpr config expr <> dot <> pretty field
     ObjectUpdate o ps ->
         prettyExpr config o
-        <+> lbrace
-        <+> listify (fmap (\(key, val) -> text (prettyPrintObjectKey key) <+> equals <+> prettyExpr config val) ps)
-        <+> rbrace
+        <+> formatter lbrace rbrace (fmap (\(key, val) -> text (prettyPrintObjectKey key) <+> equals <+> nest configIndent (prettyExpr config val)) ps)
+        where
+            formatter
+                | any (isExprLong . snd) ps = prettyLongList
+                | otherwise = prettyEncloseSep
     Abs (Left arg) val -> prettyAbs config arg val True
     Abs (Right arg) val ->
         backslash
@@ -339,15 +341,47 @@ prettyLiteral = \case
     _ -> error "Internal error: unknown literal."
 
 prettyLiteralExpr :: Config -> Literal Expr -> Doc
-prettyLiteralExpr config literal = case literal of
+prettyLiteralExpr config@Config{..} literal = case literal of
     ArrayLiteral vs ->
-        prettyEncloseSep lbracket rbracket (fmap (prettyExpr config) vs)
+        formatter lbracket rbracket (fmap (prettyExpr config) vs)
     ObjectLiteral os ->
-        prettyEncloseSep
+        formatter
             lbrace
             rbrace
-            (fmap (\(key, val) -> text (prettyPrintObjectKey key) <> colon <+> prettyExpr config val) os)
+            (fmap (\(key, val) -> text (prettyPrintObjectKey key) <> colon <+> nest configIndent (prettyExpr config val)) os)
     _ -> prettyLiteral literal
+    where
+        formatter
+            | isLiteralLong literal = prettyLongList
+            | otherwise = prettyEncloseSep
+
+isLiteralLong :: Literal Expr -> Bool
+isLiteralLong = \case
+    ArrayLiteral vs -> any isExprLong vs
+    ObjectLiteral os -> any (isExprLong . snd) os
+    _ -> False
+
+isExprLong :: Expr -> Bool
+isExprLong = \case
+    Literal literal -> isInnerLiteralLong literal
+    BinaryNoParens _ left right -> isExprLong left || isExprLong right
+    Parens expr -> isExprLong expr
+    ObjectUpdate _ _ -> True
+    Abs _ _ -> True
+    App expr1 expr2 -> isExprLong expr1 || isExprLong expr2
+    IfThenElse _ _ _ -> True
+    Case _ _ -> True
+    TypedValue _ expr _ -> isExprLong expr
+    Let _ _ -> True
+    Do _ -> True
+    PositionedValue _ comments expr -> not (null comments) || isExprLong expr
+    _ -> False
+
+isInnerLiteralLong :: Literal Expr -> Bool
+isInnerLiteralLong = \case
+    ArrayLiteral _ -> True
+    ObjectLiteral _ -> True
+    _ -> False
 
 prettyLiteralBinder :: Config -> Literal Binder -> Doc
 prettyLiteralBinder config literal = case literal of
