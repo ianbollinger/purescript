@@ -40,9 +40,11 @@ prettyAbs config arg val isFirstAbs =
             backslash
             <> text (showIdent arg)
             <+> rightArrow config
-            <+> prettyExpr config val
+            </> prettyExpr config val
         _ ->
-            text (showIdent arg) <+> rightArrow config <+> prettyExpr config val
+            text (showIdent arg)
+            <+> rightArrow config
+            </> prettyExpr config val
 
 instance Pretty DeclarationRef where
     pretty = \case
@@ -264,10 +266,8 @@ prettyExpr config@Config{..} = \case
         <$> text "where"
         <$> prettyDeclarations config decls
     Do doNotationElements ->
-        line
-        <> text "do"
-        <$> indent configIndent
-            (vsep (fmap (prettyDoNotationElement config) doNotationElements))
+        text "do"
+        <$> vsep (fmap (prettyDoNotationElement config) doNotationElements)
     TypeClassDictionaryConstructorApp _qualified _expr ->
         text "TypeClassDictionaryConstructorApp"
     TypeClassDictionary _constraint _a -> text "TypeClassDictionary"
@@ -288,11 +288,13 @@ instance Pretty ImportDeclarationType where
 
 prettyDoNotationElement :: Config -> DoNotationElement -> Doc
 prettyDoNotationElement config@Config{..} = \case
-    DoNotationValue expr -> prettyExpr config expr
+    DoNotationValue expr -> nest configIndent (prettyDoExpr config expr)
     DoNotationBind binder expr ->
-        prettyBinder config binder
-        <+> leftArrow config
-        <+> prettyExpr config expr
+        nest configIndent
+            ( prettyBinder config binder
+            <+> leftArrow config
+            <+> prettyExpr config expr
+            )
     DoNotationLet declarations ->
         nest 4
             ( text "let"
@@ -300,6 +302,17 @@ prettyDoNotationElement config@Config{..} = \case
             )
     PositionedDoNotationElement _ comments element ->
         prettyList comments <> prettyDoNotationElement config element
+
+prettyDoExpr :: Config -> Expr -> Doc
+prettyDoExpr config@Config{..} = \case
+    PositionedValue _ comments expr ->
+        prettyList comments <> prettyDoExpr config expr
+    Case exprs caseAlternatives ->
+        text "case"
+        <+> listify (fmap (prettyExpr config) exprs)
+        <+> text "of"
+        <$> vsep (fmap (prettyCaseAlternative config) caseAlternatives)
+    expr -> prettyExpr config expr
 
 prettyCaseAlternative :: Config -> CaseAlternative -> Doc
 prettyCaseAlternative config@Config{..} CaseAlternative{..} =
