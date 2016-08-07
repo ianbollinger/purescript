@@ -39,9 +39,11 @@ prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
         sorter decl1 decl2 = case (decl1, decl2) of
             (PositionedDeclaration _ _ (ImportDeclaration moduleName1 _ _), PositionedDeclaration _ _ (ImportDeclaration moduleName2 _ _))
                 | name1 == "Prelude" -> LT
-                | otherwise -> name1 `compare` P.runModuleName moduleName2
+                | name2 == "Prelude" -> GT
+                | otherwise -> name1 `compare` name2
                 where
                     name1 = P.runModuleName moduleName1
+                    name2 = P.runModuleName moduleName2
             _ -> GT
         exports' = case exports of
             Nothing -> empty
