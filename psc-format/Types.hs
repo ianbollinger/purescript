@@ -15,7 +15,9 @@ import Prelude hiding ((<$>))
 
 import Text.PrettyPrint.ANSI.Leijen
 
-import Language.PureScript.Types (Constraint(..), Type(..))
+import Language.PureScript.Environment (tyFunction, tyRecord)
+import Language.PureScript.Types (Constraint(..), Type(..), everywhereOnTypes,
+                                  everywhereOnTypesTopDown)
 import Language.PureScript.Names (ProperName(ProperName), Qualified(Qualified),
                                   runOpName, runProperName, showQualified)
 import Language.PureScript.Kinds (Kind)
@@ -29,7 +31,7 @@ import Symbols (doubleColon, forall, pipe, rightArrow, rightFatArrow,
                 underscore)
 
 prettyType :: Config -> Type -> Doc
-prettyType config = \case
+prettyType config typ' = case insertPlaceholders typ' of
     TypeWildcard _ -> underscore
     TypeVar var -> text var
     TypeLevelString s -> dquotes (text s)
@@ -43,10 +45,6 @@ prettyType config = \case
     TUnknown u -> underscore <> int u
     Skolem name s _ _ -> text (name ++ show s ++ "skolem")
     REmpty -> parens empty
-    TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
-        prettyRow config (lbrace <> space) (space <> rbrace) s
-    TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s ->
-        prettyType config s </> rightArrow config
     TypeApp t s -> prettyType config t <+> prettyType config s
     row@RCons{} -> prettyRow config lparen rparen row
     TypeOp op -> text (showQualified runOpName op)
@@ -59,8 +57,37 @@ prettyType config = \case
         <+> prettyType config typ
     KindedType typ kind ->
         prettyType config typ <+> doubleColon config <+> prettyKind config kind
-    PrettyPrintFunction _typ1 _typ2 -> text "PrettyPrintFunction"
-    PrettyPrintForAll _xs _typ -> text "PrettyPrintForall"
+    f@PrettyPrintFunction{} ->
+        prettyFunctionType config f
+        --prettyType config typ1 </> rightArrow config <+> prettyType config typ2
+    PrettyPrintForAll xs typ ->
+        forall config <+> typeVars <> dot <+> prettyType config typ
+        where
+            typeVars = hsep (fmap text xs)
+
+-- Copied from Language.PureScript.Pretty.Types.
+insertPlaceholders :: Type -> Type
+insertPlaceholders = everywhereOnTypesTopDown convertForAlls . everywhereOnTypes convert
+  where
+  convert (TypeApp (TypeApp f arg) ret) | f == tyFunction = PrettyPrintFunction arg ret
+  convert (TypeApp o r) | o == tyRecord = PrettyPrintObject r
+  convert other = other
+  convertForAlls (ForAll ident ty _) = go [ident] ty
+    where
+    go idents (ForAll ident' ty' _) = go (ident' : idents) ty'
+    go idents other = PrettyPrintForAll idents other
+  convertForAlls other = other
+
+prettyFunctionType :: Config -> Type -> Doc
+prettyFunctionType config = \case
+    PrettyPrintFunction x y ->
+        sep (prettyType config x : go y)
+        where
+            go (PrettyPrintFunction a b) =
+                (rightArrow config <+> prettyType config a) : go b
+            go a =
+                [rightArrow config <+> prettyType config a]
+    t -> prettyType config t
 
 prettyTypes :: Config -> [Type] -> Doc
 prettyTypes config types

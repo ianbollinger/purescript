@@ -74,7 +74,7 @@ runFormatter config'@Config{..} = do
                 Just o' -> writeFile o' output
             where
                 output =
-                    displayS (renderPretty 0.9 configWidth $ vsep $ fmap (\(_, m) -> prettyModule config' m) v) ""
+                    displayS (renderPretty 0.95 configWidth $ vsep $ fmap (\(_, m) -> prettyModule config' m) v) ""
         Left e -> do
             hPutStrLn stderr (P.prettyPrintMultipleErrors P.defaultPPEOptions e)
             exitFailure
