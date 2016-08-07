@@ -397,9 +397,11 @@ prettyBinder config b = case b of
             bs = case binders of
                 [] -> empty
                 _ -> space <> sep (fmap (prettyBinder config) binders)
-    OpBinder _valueOpName -> text "OpBinder"
-    BinaryNoParensBinder _binder1 _binder2 _binder3 ->
-        text "BinaryNoParensBinder"
+    OpBinder valueOpName -> pretty valueOpName
+    BinaryNoParensBinder opBinder binder1 binder2 ->
+        prettyBinder config binder1
+        <+> prettyBinder config opBinder
+        <+> prettyBinder config binder2
     ParensInBinder binder -> parens (prettyBinder config binder)
     NamedBinder ident binder ->
         pretty ident <> at <> prettyBinder config binder
