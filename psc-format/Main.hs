@@ -70,7 +70,7 @@ runFormatter config'@Config{..} = do
     case P.parseModulesFromFiles id [("Main", inputFile)] of
         Right v ->
             case configOutput of
-                Nothing -> putStrLn output
+                Nothing -> putStr output
                 Just o' -> writeFile o' output
             where
                 output =
