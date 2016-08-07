@@ -3,6 +3,8 @@
 
 module Types
     ( prettyType
+    , prettyLongType
+    , prettyLongTypes
     , prettyTypes
     , prettyConstraint
     , prettyConstraints
@@ -30,7 +32,8 @@ prettyType config = \case
     TypeWildcard _ -> underscore
     TypeVar var -> text var
     TypeLevelString s -> text (show s ++ "TypeLevelString")
-    PrettyPrintObject row -> prettyRowWith config '{' '}' row
+    PrettyPrintObject row ->
+        prettyRow config (lbrace <> space) (space <> rbrace) row
     TypeConstructor (Qualified moduleName properName) ->
         case moduleName of
             Nothing -> pretty properName
@@ -40,11 +43,11 @@ prettyType config = \case
     Skolem name s _ _ -> text (name ++ show s ++ "skolem")
     REmpty -> parens empty
     TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
-        prettyRowWith config '{' '}' s
+        prettyRow config (lbrace <> space) (space <> rbrace) s
     TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s ->
         prettyType config s </> rightArrow config
     TypeApp t s -> prettyType config t <+> prettyType config s
-    row@RCons{} -> prettyRowWith config '(' ')' row
+    row@RCons{} -> prettyRow config lparen rparen row
     TypeOp op -> text (showQualified runOpName op)
     BinaryNoParensType op l r ->
         prettyType config l <+> prettyType config op <+> prettyType config r
@@ -62,6 +65,19 @@ prettyTypes :: Config -> [Type] -> Doc
 prettyTypes config types
     | null types = empty
     | otherwise = space <> hsep (fmap (prettyType config) types)
+
+prettyLongType :: Config -> Type -> Doc
+prettyLongType config typ = case typ of
+    PrettyPrintObject row -> prettyLongRow config lbrace rbrace row
+    TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
+        prettyLongRow config lbrace rbrace s
+    row@RCons{} -> prettyLongRow config lparen rparen row
+    _ -> prettyType config typ
+
+prettyLongTypes :: Config -> [Type] -> Doc
+prettyLongTypes config types
+    | null types = empty
+    | otherwise = space <> hsep (fmap (prettyLongType config) types)
 
 prettyConstraint :: Config -> Constraint -> Doc
 prettyConstraint config (Constraint class' args _) =
@@ -85,7 +101,7 @@ prettyForAll config typeVar typ vars =
         ForAll s t _ ->
             prettyForAll config s t (typeVar : vars)
         _ ->
-            forall config <+> typeVars <> dot <+> group (prettyType config typ)
+            forall config <+> typeVars <> dot <+> prettyType config typ
             where
                 typeVars = text (unwords (typeVar : vars))
 
@@ -97,29 +113,49 @@ prettyTypeList config = sep . fmap go
             Just kind' ->
                 text s <+> doubleColon config <+> prettyKind config kind'
 
-prettyRowWith :: Config -> Char -> Char -> Type -> Doc
-prettyRowWith config open close = uncurry listToDoc . toList []
+prettyLongRow :: Config -> Doc -> Doc -> Type -> Doc
+prettyLongRow config open close = uncurry listToDoc . toList []
     where
-        tailToPs :: Type -> Doc
-        tailToPs REmpty = empty
-        tailToPs other = pipe <+> prettyType config other
-
-        nameAndTypeToPs :: Char -> String -> Type -> Doc
-        nameAndTypeToPs start name ty =
-            text (start : ' ' : name)
-            <+> doubleColon config
-            <+> prettyType config ty
-
         listToDoc :: [(String, Type)] -> Type -> Doc
-        listToDoc [] REmpty = text [open, close]
-        listToDoc [] rest = char open <+> tailToPs rest <+> char close
+        listToDoc [] REmpty = open <> close
+        listToDoc [] rest = open <+> prettyTail config rest <+> close
         listToDoc ts rest =
             hardline
-            <> vcat (zipWith (\(nm, ty) i -> nameAndTypeToPs (if i == 0 then open else ',') nm ty) ts [0 :: Int ..] ++ tail' rest ++ [char close])
+            <> vcat (zipWith go ts [0 :: Int ..])
+            <> tail' rest
+            <$> close
             where
-                tail' REmpty = []
-                tail' _ = [tailToPs rest]
+                go (nm, ty) i =
+                    (if i == 0 then open else comma)
+                    <+> prettyNameAndType config nm ty
+                tail' REmpty = empty
+                tail' _ = line <> prettyTail config rest
 
-        toList :: [(String, Type)] -> Type -> ([(String, Type)], Type)
-        toList tys (RCons name ty row) = toList ((name, ty) : tys) row
-        toList tys r = (reverse tys, r)
+prettyRow :: Config -> Doc -> Doc -> Type -> Doc
+prettyRow config open close = uncurry listToDoc . toList []
+    where
+        listToDoc :: [(String, Type)] -> Type -> Doc
+        listToDoc [] REmpty = open <> close
+        listToDoc [] rest = open <+> prettyTail config rest <+> close
+        listToDoc ts rest =
+            hcat (zipWith go ts [0 :: Int ..]) <> tail' rest <> close
+            where
+                go (nm, ty) i =
+                    (if i == 0 then open else comma <> space)
+                    <> prettyNameAndType config nm ty
+                tail' REmpty = empty
+                tail' _ = space <> prettyTail config rest
+
+prettyNameAndType :: Config -> String -> Type -> Doc
+prettyNameAndType config name ty =
+    text name <+> doubleColon config <+> prettyType config ty
+
+prettyTail :: Config -> Type -> Doc
+prettyTail config = \case
+    REmpty -> empty
+    other -> pipe <+> prettyType config other
+
+toList :: [(String, Type)] -> Type -> ([(String, Type)], Type)
+toList tys = \case
+    RCons name ty row -> toList ((name, ty) : tys) row
+    r -> (reverse tys, r)

@@ -19,7 +19,8 @@ import Language.PureScript.Environment (DataDeclType(..))
 import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
 
 import Names ()
-import Types (prettyConstraints, prettyType, prettyTypes, prettyTypeList)
+import Types (prettyConstraints, prettyLongType, prettyLongTypes, prettyType,
+              prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
 import Pretty (listify, prettyEncloseSep, prettyTupled)
@@ -88,7 +89,8 @@ prettyDeclaration config@Config{..} = \case
                     <$> equals
                     <+> formatConstructor x
                     <$> vsep (fmap (\c -> pipe <+> formatConstructor c) xs)
-            formatConstructor (n, ts) = pretty n <> prettyTypes config ts
+            formatConstructor (n, ts) =
+                pretty n <> prettyLongTypes config ts
     DataBindingGroupDeclaration _declarations ->
         text "DataBindingGroupDeclaration"
     TypeSynonymDeclaration propertyName params typ ->
@@ -97,7 +99,7 @@ prettyDeclaration config@Config{..} = \case
             <+> pretty propertyName
             <> params'
             <+> equals
-            <+> prettyType config typ
+            <+> prettyLongType config typ
             )
         where
             params'
