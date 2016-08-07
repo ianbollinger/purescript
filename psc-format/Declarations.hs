@@ -1,8 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Declarations
     ( prettyDeclaration
+    , prettyDeclarations
     ) where
 
 import Prelude hiding ((<$>))
@@ -14,11 +16,10 @@ import Language.PureScript.AST.Declarations
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.Operators (Fixity(..), showAssoc)
 import Language.PureScript.Environment (DataDeclType(..))
-import Language.PureScript.Names (Ident(..), OpName(..), Qualified(..), showIdent)
-import Language.PureScript.Pretty.Values (prettyPrintBinder)
+import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
 
 import Names ()
-import Types (prettyConstraint, prettyType, prettyTypeList)
+import Types (prettyConstraints, prettyType, prettyTypes, prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
 import Pretty (listify, prettyEncloseSep, prettyTupled)
@@ -26,13 +27,13 @@ import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
 
-printAbs :: Config -> Ident -> Expr -> Bool -> Doc
-printAbs config arg val isFirstAbs =
+prettyAbs :: Config -> Ident -> Expr -> Bool -> Doc
+prettyAbs config arg val isFirstAbs =
     case (val, isFirstAbs) of
         (Abs (Left argN) valN, True) ->
             backslash
             <> text (showIdent arg)
-            <+> printAbs config argN valN False
+            <+> prettyAbs config argN valN False
         (_, True) ->
             backslash
             <> text (showIdent arg)
@@ -42,34 +43,28 @@ printAbs config arg val isFirstAbs =
             text (showIdent arg) <+> rightArrow config <+> prettyExpr config val
 
 instance Pretty DeclarationRef where
-    pretty (TypeRef properName ns) =
-        pretty properName <> constructors
-        where
-            constructors = case ns of
-                Nothing ->
-                    text "(..)"
-                Just [] ->
-                    empty
-                Just properNames ->
-                    tupled (fmap pretty properNames)
-    pretty (TypeOpRef (OpName opName)) = text "type" <+> parens (pretty opName)
-    pretty (ValueRef ident) = pretty ident
-    pretty (ValueOpRef opName) = parens $ pretty opName
-    pretty (TypeClassRef properName) = text "class" <+> pretty properName
-    pretty (TypeInstanceRef _ident) = text "TypeInstanceRef"
-    pretty (ModuleRef moduleName) = text "module" <+> pretty moduleName
-    pretty (ReExportRef _moduleName _ref) = text "ReExportRef"
-    pretty (PositionedDeclarationRef _sourceSpan comments declarationRef) =
-        comments' <> pretty declarationRef
-        where
-            comments'
-                | null comments = empty
-                | otherwise = vsep (fmap pretty comments) <> hardline
+    pretty = \case
+        TypeRef properName ns -> pretty properName <> constructors
+            where
+                constructors =
+                    case ns of
+                        Nothing -> text "(..)"
+                        Just [] -> empty
+                        Just properNames -> tupled (fmap pretty properNames)
+        TypeOpRef opName -> text "type" <+> parens (pretty opName)
+        ValueRef ident -> pretty ident
+        ValueOpRef opName -> parens (pretty opName)
+        TypeClassRef properName -> text "class" <+> pretty properName
+        TypeInstanceRef _ident -> text "TypeInstanceRef"
+        ModuleRef moduleName -> text "module" <+> pretty moduleName
+        ReExportRef _moduleName _ref -> text "ReExportRef"
+        PositionedDeclarationRef _ comments declarationRef ->
+            prettyList comments <> pretty declarationRef
 
     prettyList = prettyTupled . fmap pretty
 
 prettyDeclaration :: Config -> Declaration -> Doc
-prettyDeclaration config@Config{..} decl = case decl of
+prettyDeclaration config@Config{..} = \case
     DataDeclaration dataDeclType properName lT constructors ->
         nest configIndent
             ( text dataLabel
@@ -93,12 +88,7 @@ prettyDeclaration config@Config{..} decl = case decl of
                     <$> equals
                     <+> formatConstructor x
                     <$> vsep (fmap (\c -> pipe <+> formatConstructor c) xs)
-            formatConstructor (n, ts) = pretty n <> ts'
-                where
-                    ts'
-                        | null ts = empty
-                        | otherwise =
-                            space <> hsep (fmap (prettyType config) ts)
+            formatConstructor (n, ts) = pretty n <> prettyTypes config ts
     DataBindingGroupDeclaration _declarations ->
         text "DataBindingGroupDeclaration"
     TypeSynonymDeclaration propertyName params typ ->
@@ -122,23 +112,16 @@ prettyDeclaration config@Config{..} decl = case decl of
             body = case expr of
                 Left exprs ->
                     empty
-                    <$> indent configIndent (vsep (fmap printGuardExpr exprs))
+                    <$> prettyGuardExprs config (const equals) exprs
                 Right expression ->
                     nest configIndent
-                      ( space
-                      <> equals
-                      </> prettyExpr config expression
-                      )
+                        ( space
+                        <> equals
+                        </> prettyExpr config expression
+                        )
             binders' = case binders of
                 [] -> empty
                 _ -> space <> sep (fmap (prettyBinder config) binders)
-            printGuardExpr (guard, expr') =
-                nest configIndent
-                  ( pipe
-                  <+> prettyExpr config guard
-                  <+> equals
-                  </> prettyExpr config expr'
-                  )
     BindingGroupDeclaration _is -> text "BindingGroupDeclaration"
     ExternDeclaration tdent typ ->
         nest configIndent
@@ -157,72 +140,59 @@ prettyDeclaration config@Config{..} decl = case decl of
             </> doubleColon config
             <+> prettyKind config kin
             )
-    FixityDeclaration fixity ->
-        case fixity of
-            Left valueFixity -> pretty valueFixity
-            Right typeFixity -> pretty typeFixity
+    FixityDeclaration fixity -> either pretty pretty fixity
     ImportDeclaration moduleName importDeclarationType qualifiedModuleName ->
-        text "import" <+> pretty moduleName <> importBody
+        text "import"
+        <+> pretty moduleName
+        <> pretty importDeclarationType
+        <> qualified
         where
-            importBody = case qualifiedModuleName of
-                Nothing -> pretty importDeclarationType
+            qualified = case qualifiedModuleName of
+                Nothing -> empty
                 Just qualifiedModuleName' ->
-                    pretty importDeclarationType
-                    <+> text "as"
+                    space
+                    <> text "as"
                     <+> pretty qualifiedModuleName'
     TypeClassDeclaration properName a constraints declarations ->
         text "class"
-        <> constraints'
+        <> prettyConstraints config space leftFatArrow constraints
         <+> pretty properName
         <+> prettyTypeList config a
         <+> text "where"
-        <$> indent configIndent
-            (vsep (fmap (prettyDeclaration config) declarations))
-        where
-            constraints'
-                | null constraints = empty
-                | length constraints == 1 =
-                    space
-                    <> prettyConstraint config (head constraints)
-                    <+> leftFatArrow config
-                | otherwise =
-                    space
-                    <> parens
-                        (listify (fmap (prettyConstraint config) constraints))
-                    <+> leftFatArrow config
+        <$> indent configIndent (prettyDeclarations config declarations)
     TypeInstanceDeclaration ident constraints qualified types body ->
         case body of
             DerivedInstance -> text "derive" <+> header
             ExplicitInstance declarations ->
                 header
                 <+> text "where"
-                <$> indent configIndent
-                    (vsep (fmap (prettyDeclaration config) declarations))
+                <$> indent configIndent (prettyDeclarations config declarations)
         where
             header =
                 text "instance"
                 <+> pretty ident
                 <+> doubleColon config
-                <> constraints'
+                <> prettyConstraints config space rightFatArrow constraints
                 <+> pretty qualified
                 <+> prettyType config (head types)
-            constraints'
-                | null constraints = empty
-                | length constraints == 1 =
-                    space
-                    <> prettyConstraint config (head constraints)
-                    <+> rightFatArrow config
-                | otherwise =
-                    space
-                    <> parens
-                        (listify (fmap (prettyConstraint config) constraints))
-                    <+> rightFatArrow config
-    PositionedDeclaration _sourceSpan comments declaration ->
-        comments' <> prettyDeclaration config declaration
-        where
-            comments'
-                | null comments = empty
-                | otherwise = vsep (fmap pretty comments) <> hardline
+    PositionedDeclaration _ comments declaration ->
+        prettyList comments <> prettyDeclaration config declaration
+
+prettyGuardExpr :: Config -> (Config -> Doc) -> (Guard, Expr) -> Doc
+prettyGuardExpr config@Config{..} symbol (guard, expr') =
+    nest configIndent
+        ( pipe
+        <+> prettyExpr config guard
+        <+> symbol config
+        </> prettyExpr config expr'
+        )
+
+prettyGuardExprs :: Config -> (Config -> Doc) -> [(Guard, Expr)] -> Doc
+prettyGuardExprs config@Config{..} symbol =
+    indent configIndent . vsep . fmap (prettyGuardExpr config symbol)
+
+prettyDeclarations :: Config -> [Declaration] -> Doc
+prettyDeclarations config = vsep . fmap (prettyDeclaration config)
 
 instance Pretty ValueFixity where
     pretty (ValueFixity fixity (Qualified module' identOrConstructor) opName) =
@@ -241,7 +211,7 @@ instance Pretty Fixity where
         text (showAssoc associativity) <+> pretty precedence
 
 prettyExpr :: Config -> Expr -> Doc
-prettyExpr config@Config{..} e = case e of
+prettyExpr config@Config{..} = \case
     Literal literal -> prettyLiteralExpr config literal
     UnaryMinus expr -> char '-' <> prettyExpr config expr
     BinaryNoParens op left right ->
@@ -249,20 +219,21 @@ prettyExpr config@Config{..} e = case e of
         <+> prettyOp op
         <+> prettyExpr config right
         where
-            prettyOp o = case o of
+            prettyOp = \case
                 Op name -> pretty name
                 expr -> tick <> prettyExpr config expr <> tick
     Parens expr -> parens (prettyExpr config expr)
-    ObjectGetter s -> text ("_." ++ s)
+    ObjectGetter s -> underscore <> dot <> text s
     Accessor field expr -> prettyExpr config expr <> dot <> pretty field
     ObjectUpdate o ps ->
         prettyExpr config o
         <+> lbrace
         <+> listify (fmap (\(key, val) -> text key <+> equals <+> prettyExpr config val) ps)
         <+> rbrace
-    Abs (Left arg) val -> printAbs config arg val True
+    Abs (Left arg) val -> prettyAbs config arg val True
     Abs (Right arg) val ->
-        text ('\\' : prettyPrintBinder arg)
+        backslash
+        <> prettyBinder config arg
         <+> rightArrow config
         <$> indent configIndent (prettyExpr config val)
     App expr1 expr2 -> prettyExpr config expr1 <+> prettyExpr config expr2
@@ -282,12 +253,12 @@ prettyExpr config@Config{..} e = case e of
         <+> text "of"
         <$> indent configIndent
             (vsep (fmap (prettyCaseAlternative config) caseAlternatives))
-    TypedValue _bool expr typ ->
+    TypedValue _ expr typ ->
         prettyExpr config expr <+> doubleColon config <+> prettyType config typ
     Let decls expr ->
         prettyExpr config expr
         <$> text "where"
-        <$> vsep (fmap (prettyDeclaration config) decls)
+        <$> prettyDeclarations config decls
     Do doNotationElements ->
         line
         <> text "do"
@@ -302,21 +273,17 @@ prettyExpr config@Config{..} e = case e of
         text "SuperClassDictionary"
     AnonymousArgument -> underscore
     Hole hole -> text ('?' : hole)
-    PositionedValue _sourceSpan comments expr ->
-        comments' <> prettyExpr config expr
-        where
-            comments'
-                | null comments = empty
-                | otherwise = vsep (fmap pretty comments) <> hardline
+    PositionedValue _ comments expr ->
+        prettyList comments <> prettyExpr config expr
 
 instance Pretty ImportDeclarationType where
-    pretty typ = case typ of
+    pretty = \case
         Implicit -> empty
         Explicit refs -> space <> prettyTupled (fmap pretty refs)
         Hiding refs -> text "hiding" <+> tupled (fmap pretty refs)
 
 prettyDoNotationElement :: Config -> DoNotationElement -> Doc
-prettyDoNotationElement config@Config{..} e = case e of
+prettyDoNotationElement config@Config{..} = \case
     DoNotationValue expr -> prettyExpr config expr
     DoNotationBind binder expr ->
         prettyBinder config binder
@@ -325,21 +292,17 @@ prettyDoNotationElement config@Config{..} e = case e of
     DoNotationLet declarations ->
         nest 4
             ( text "let"
-            <+> vsep (fmap (prettyDeclaration config) declarations)
+            <+> prettyDeclarations config declarations
             )
-    PositionedDoNotationElement _sourceSpan comments element ->
-        comments' <> prettyDoNotationElement config element
-        where
-            comments'
-                | null comments = empty
-                | otherwise = vsep (fmap pretty comments) <> hardline
+    PositionedDoNotationElement _ comments element ->
+        prettyList comments <> prettyDoNotationElement config element
 
 prettyCaseAlternative :: Config -> CaseAlternative -> Doc
 prettyCaseAlternative config@Config{..} CaseAlternative{..} =
     case caseAlternativeResult of
         Left exprs ->
             binders
-            <$> indent configIndent (vsep (fmap printGuardExpr exprs))
+            <$> prettyGuardExprs config rightArrow exprs
         Right expr ->
             nest configIndent
                 ( binders
@@ -349,19 +312,12 @@ prettyCaseAlternative config@Config{..} CaseAlternative{..} =
     where
         binders =
             listify (fmap (prettyBinder config) caseAlternativeBinders)
-        printGuardExpr (guard, expr) =
-            pipe
-            <+> prettyExpr config guard
-            <+> rightArrow config
-            <+> prettyExpr config expr
 
 prettyLiteral :: Literal a -> Doc
-prettyLiteral literal = case literal of
-    NumericLiteral integerOrDouble -> case integerOrDouble of
-        Left integer' -> pretty integer'
-        Right number -> pretty number
-    StringLiteral s -> text ("\"" ++ s ++ "\"")
-    CharLiteral c -> text ['\'', c, '\'']
+prettyLiteral = \case
+    NumericLiteral integerOrDouble -> either pretty pretty integerOrDouble
+    StringLiteral s -> dquotes (text s)
+    CharLiteral c -> squotes (char c)
     BooleanLiteral b -> text $ if b then "true" else "false"
     _ -> error "Internal error: unknown literal."
 
@@ -388,7 +344,7 @@ prettyLiteralBinder config literal = case literal of
     _ -> prettyLiteral literal
 
 prettyBinder :: Config -> Binder -> Doc
-prettyBinder config b = case b of
+prettyBinder config = \case
     NullBinder -> underscore
     LiteralBinder literalBinder -> prettyLiteralBinder config literalBinder
     VarBinder ident -> pretty ident
@@ -396,7 +352,7 @@ prettyBinder config b = case b of
         where
             bs = case binders of
                 [] -> empty
-                _ -> space <> sep (fmap (prettyBinder config) binders)
+                _ -> space <> hsep (fmap (prettyBinder config) binders)
     OpBinder valueOpName -> pretty valueOpName
     BinaryNoParensBinder opBinder binder1 binder2 ->
         prettyBinder config binder1
@@ -406,11 +362,7 @@ prettyBinder config b = case b of
     NamedBinder ident binder ->
         pretty ident <> at <> prettyBinder config binder
     PositionedBinder _ comments binder ->
-        comments' <> prettyBinder config binder
-        where
-            comments'
-                | null comments = empty
-                | otherwise = vsep (fmap pretty comments) <> hardline
+        prettyList comments <> prettyBinder config binder
     TypedBinder typ binder ->
         prettyBinder config binder
         <+> doubleColon config

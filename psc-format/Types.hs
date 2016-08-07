@@ -1,8 +1,11 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Types
     ( prettyType
+    , prettyTypes
     , prettyConstraint
+    , prettyConstraints
     , prettyTypeList
     ) where
 
@@ -23,46 +26,58 @@ import Symbols (doubleColon, forall, pipe, rightArrow, rightFatArrow,
                 underscore)
 
 prettyType :: Config -> Type -> Doc
-prettyType config t' = case t' of
+prettyType config = \case
     TypeWildcard _ -> underscore
     TypeVar var -> text var
-    TypeLevelString s -> text $ show s ++ "TypeLevelString"
+    TypeLevelString s -> text (show s ++ "TypeLevelString")
     PrettyPrintObject row -> prettyRowWith config '{' '}' row
     TypeConstructor (Qualified moduleName properName) ->
         case moduleName of
             Nothing -> pretty properName
             Just moduleN ->
                 pretty moduleN <> dot <> text (runProperName properName)
-    TUnknown u -> text $ '_' : show u
-    Skolem name s _ _ -> text $ name ++ show s ++ "skolem"
-    REmpty -> text "()"
+    TUnknown u -> underscore <> text (show u)
+    Skolem name s _ _ -> text (name ++ show s ++ "skolem")
+    REmpty -> parens empty
     TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
         prettyRowWith config '{' '}' s
     TypeApp (TypeConstructor (Qualified _ (ProperName "Function"))) s ->
         prettyType config s </> rightArrow config
     TypeApp t s -> prettyType config t <+> prettyType config s
     row@RCons{} -> prettyRowWith config '(' ')' row
-    TypeOp op -> text $ showQualified runOpName op
+    TypeOp op -> text (showQualified runOpName op)
     BinaryNoParensType op l r ->
         prettyType config l <+> prettyType config op <+> prettyType config r
     ParensInType typ -> parens (prettyType config typ)
     ForAll s t _ -> prettyForAll config s t []
     ConstrainedType constraints typ ->
-        constraints' </> rightFatArrow config <+> prettyType config typ
-        where
-            constraints'
-                | length constraints == 1 =
-                    prettyConstraint config (head constraints)
-                | otherwise =
-                    parens (listify (fmap (prettyConstraint config) constraints))
+        prettyConstraints config empty rightFatArrow constraints
+        <+> prettyType config typ
     KindedType typ kind ->
         prettyType config typ <+> doubleColon config <+> prettyKind config kind
     PrettyPrintFunction _typ1 _typ2 -> text "PrettyPrintFunction"
     PrettyPrintForAll _xs _typ -> text "PrettyPrintForall"
 
+prettyTypes :: Config -> [Type] -> Doc
+prettyTypes config types
+    | null types = empty
+    | otherwise = space <> hsep (fmap (prettyType config) types)
+
 prettyConstraint :: Config -> Constraint -> Doc
-prettyConstraint config (Constraint class' args _data) =
-    pretty class' <+> sep (fmap (prettyType config) args)
+prettyConstraint config (Constraint class' args _) =
+    pretty class' <> prettyTypes config args
+
+prettyConstraints :: Config -> Doc -> (Config -> Doc) -> [Constraint] -> Doc
+prettyConstraints config begin arrow constraints
+    | null constraints = empty
+    | length constraints == 1 =
+        begin
+        <> prettyConstraint config (head constraints)
+        </> arrow config
+    | otherwise =
+        begin
+        <> parens (listify (fmap (prettyConstraint config) constraints))
+        </> arrow config
 
 prettyForAll :: Config -> String -> Type -> [String] -> Doc
 prettyForAll config typeVar typ vars =
@@ -72,7 +87,7 @@ prettyForAll config typeVar typ vars =
         _ ->
             forall config <+> typeVars <> dot <+> group (prettyType config typ)
             where
-                typeVars = text . unwords $ typeVar : vars
+                typeVars = text (unwords (typeVar : vars))
 
 prettyTypeList :: Config -> [(String, Maybe Kind)] -> Doc
 prettyTypeList config = sep . fmap go

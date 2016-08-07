@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Kind
     ( prettyKind
     ) where
@@ -10,7 +12,7 @@ import Config (Config)
 import Symbols (rightArrow)
 
 prettyKind :: Config -> Kind -> Doc
-prettyKind config k = case k of
+prettyKind config = \case
     KUnknown a -> char 'u' <> pretty a
     Star -> char '*'
     Bang -> char '!'

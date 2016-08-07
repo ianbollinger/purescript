@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Module
@@ -8,14 +9,14 @@ import Prelude hiding ((<$>))
 import Data.List (sortBy)
 
 import qualified Language.PureScript as P
-import Language.PureScript.AST.Declarations
-import Language.PureScript.Parser.Declarations
+import Language.PureScript.AST.Declarations (Declaration(..), Module(..),
+                                             isImportDecl)
 
 import Text.PrettyPrint.ANSI.Leijen
 
 import Config
 import Names ()
-import Declarations (prettyDeclaration)
+import Declarations (prettyDeclaration, prettyDeclarations)
 import Comments ()
 
 vSpace :: Doc
@@ -23,21 +24,18 @@ vSpace = hardline <> hardline
 
 prettyModule :: Config -> Module -> Doc
 prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
-    comments'
+    prettyList comments
     <> text "module"
     <+> pretty moduleName
     <> exports'
     <+> text "where"
     <> vSpace
-    <> vcat (fmap (prettyDeclaration config) (sortBy sorter imports'))
+    <> prettyDeclarations config (sortBy sorter imports')
     <> vSpace
-    <> prettyDeclarations config decls'
+    <> prettyTopLevelDeclarations config decls'
     <> hardline
     where
-        (imports', decls') = span isImport decls
-        isImport decl = case decl of
-            PositionedDeclaration _ _ ImportDeclaration{} -> True
-            _ -> False
+        (imports', decls') = span isImportDecl decls
         sorter decl1 decl2 = case (decl1, decl2) of
             (PositionedDeclaration _ _ (ImportDeclaration moduleName1 _ _), PositionedDeclaration _ _ (ImportDeclaration moduleName2 _ _))
                 | name1 == "Prelude" -> LT
@@ -45,9 +43,6 @@ prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
                 where
                     name1 = P.runModuleName moduleName1
             _ -> GT
-        comments'
-            | null comments = empty
-            | otherwise = vsep (fmap pretty comments) <> hardline
         exports' = case exports of
             Nothing -> empty
             Just refs ->
@@ -58,14 +53,16 @@ prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
             x : xs ->
                 parens (space <> vcat (x : fmap ((comma <> space) <>) xs) <> line)
 
-prettyDeclarations :: Config -> [Declaration] -> Doc
-prettyDeclarations config decls = case decls of
+prettyTopLevelDeclarations :: Config -> [Declaration] -> Doc
+prettyTopLevelDeclarations config = \case
     [] -> empty
     [decl] -> prettyDeclaration config decl
     x@(PositionedDeclaration _ _ TypeDeclaration{}) : y@(PositionedDeclaration _ _ ValueDeclaration{}) : xs ->
         prettyDeclaration config x
         <$> prettyDeclaration config y
         <$> hardline
-        <> prettyDeclarations config xs
+        <> prettyTopLevelDeclarations config xs
     x : xs ->
-        prettyDeclaration config x <$> hardline <> prettyDeclarations config xs
+        prettyDeclaration config x
+        <$> hardline
+        <> prettyTopLevelDeclarations config xs

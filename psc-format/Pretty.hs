@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Pretty where
 
 import Prelude ((.), ($), (++), fmap)
@@ -22,6 +24,6 @@ listify :: [Doc] -> Doc
 listify = cat . punctuate (comma <> space)
 
 prettyEncloseSep :: Doc -> Doc -> [Doc] -> Doc
-prettyEncloseSep l r y = case y of
+prettyEncloseSep l r = \case
     [] -> empty
-    (x : xs) -> group (vcat (empty : l <+> x : fmap (comma <+>) xs) <$> r)
+    x : xs -> group (vcat (empty : l <+> x : fmap (comma <+>) xs) <$> r)

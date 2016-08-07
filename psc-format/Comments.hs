@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Comments where
 
@@ -6,10 +7,13 @@ import Prelude
 
 import Text.PrettyPrint.ANSI.Leijen
 
-import Language.PureScript.Comments
+import Language.PureScript.Comments (Comment(..))
 
 instance Pretty Comment where
-    pretty (LineComment s) = text "--" <> pretty s
-    pretty (BlockComment s) = text "{-" <> pretty s <> text "-}"
+    pretty = \case
+        LineComment s -> text "--" <> pretty s
+        BlockComment s -> text "{-" <> pretty s <> text "-}"
 
-    prettyList = vcat . fmap pretty
+    prettyList comments
+        | null comments = empty
+        | otherwise = vsep (fmap pretty comments) <> hardline

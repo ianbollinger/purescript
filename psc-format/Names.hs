@@ -23,8 +23,7 @@ instance Pretty (OpName a) where
     pretty = text . runOpName
 
 instance Pretty a => Pretty (Qualified a) where
-    pretty (Qualified mN n) =
-        moduleName <> pretty n
+    pretty (Qualified mN n) = moduleName <> pretty n
         where
             moduleName =
                 case mN of
