@@ -249,7 +249,7 @@ prettyExpr config@Config{..} = \case
         <$> indent configIndent (prettyExpr config val)
     App expr1 expr2 -> prettyExpr config expr1 <+> prettyExpr config expr2
     Var qualified -> pretty qualified
-    Op qualified -> pretty qualified
+    Op qualified -> parens (pretty qualified)
     IfThenElse expr1 expr2 expr3 ->
         sep
           [ text "if" <+> prettyExpr config expr1
