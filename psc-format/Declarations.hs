@@ -291,17 +291,17 @@ instance Pretty ImportDeclarationType where
         Explicit refs ->
             space <> prettyShortList lparen rparen (fmap pretty refs)
         Hiding refs ->
-            text "hiding" <+> prettyShortList lparen rparen (fmap pretty refs)
+            space
+            <> text "hiding"
+            <+> prettyShortList lparen rparen (fmap pretty refs)
 
 prettyDoNotationElement :: Config -> DoNotationElement -> Doc
 prettyDoNotationElement config@Config{..} = \case
-    DoNotationValue expr -> nest configIndent (prettyDoExpr config expr)
+    DoNotationValue expr -> prettyDoExpr config expr
     DoNotationBind binder expr ->
-        nest configIndent
-            ( prettyBinder config binder
-            <+> leftArrow config
-            <+> prettyExpr config expr
-            )
+        prettyBinder config binder
+        <+> leftArrow config
+        <+> nest configIndent (prettyExpr config expr)
     DoNotationLet declarations ->
         nest 4
             ( text "let"
@@ -313,7 +313,7 @@ prettyDoNotationElement config@Config{..} = \case
 prettyDoExpr :: Config -> Expr -> Doc
 prettyDoExpr config@Config{..} = \case
     PositionedValue _ comments expr ->
-        prettyList comments <> prettyDoExpr config expr
+        prettyList comments <> nest configIndent (prettyDoExpr config expr)
     Case exprs caseAlternatives ->
         text "case"
         <+> listify (fmap (prettyExpr config) exprs)
