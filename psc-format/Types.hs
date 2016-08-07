@@ -32,7 +32,7 @@ prettyType :: Config -> Type -> Doc
 prettyType config = \case
     TypeWildcard _ -> underscore
     TypeVar var -> text var
-    TypeLevelString s -> text (show s ++ "TypeLevelString")
+    TypeLevelString s -> dquotes (text s)
     PrettyPrintObject row ->
         prettyRow config (lbrace <> space) (space <> rbrace) row
     TypeConstructor (Qualified moduleName properName) ->
@@ -40,7 +40,7 @@ prettyType config = \case
             Nothing -> pretty properName
             Just moduleN ->
                 pretty moduleN <> dot <> text (runProperName properName)
-    TUnknown u -> underscore <> text (show u)
+    TUnknown u -> underscore <> int u
     Skolem name s _ _ -> text (name ++ show s ++ "skolem")
     REmpty -> parens empty
     TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
