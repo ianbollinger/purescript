@@ -24,7 +24,8 @@ import Types (prettyConstraints, prettyLongType, prettyLongTypes,
               prettyShortType, prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
-import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList)
+import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList,
+               prettySingleLineList)
 import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
@@ -54,7 +55,8 @@ instance Pretty DeclarationRef where
                     case ns of
                         Nothing -> text "(..)"
                         Just [] -> empty
-                        Just properNames -> tupled (fmap pretty properNames)
+                        Just names ->
+                            prettySingleLineList lparen rparen (fmap pretty names)
         TypeOpRef opName -> text "type" <+> parens (pretty opName)
         ValueRef ident -> pretty ident
         ValueOpRef opName -> parens (pretty opName)
@@ -288,7 +290,7 @@ instance Pretty ImportDeclarationType where
     pretty = \case
         Implicit -> empty
         Explicit refs ->
-            space <> prettyShortList lparen rparen (fmap pretty refs)
+            space <> prettySingleLineList lparen rparen (fmap pretty refs)
         Hiding refs ->
             space
             <> text "hiding"

@@ -14,16 +14,21 @@ listify :: [Doc] -> Doc
 listify = cat . punctuate (comma <> space)
 
 prettyEncloseSep :: Doc -> Doc -> [Doc] -> Doc
-prettyEncloseSep left right docs = case docs of
+prettyEncloseSep left right = \case
     [] -> left <> right
-    x : xs ->
-        (hcat (left <> x : fmap (comma <+>) xs) <> right)
+    docs ->
+        prettySingleLineList left right docs
         <|> prettyLongList left right docs
 
 prettyShortList :: Doc -> Doc -> [Doc] -> Doc
 prettyShortList left right = \case
     [] -> left <> right
     x : xs -> hcat (left <> x : fmap (comma </>) xs) <> right
+
+prettySingleLineList :: Doc -> Doc -> [Doc] -> Doc
+prettySingleLineList left right = \case
+    [] -> left <> right
+    x : xs -> hcat (left <> x : fmap (comma <+>) xs) <> right
 
 prettyLongList :: Doc -> Doc -> [Doc] -> Doc
 prettyLongList left right = \case
