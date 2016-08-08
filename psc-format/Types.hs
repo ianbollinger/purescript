@@ -3,6 +3,7 @@
 
 module Types
     ( prettyType
+    , prettyShortType
     , prettyLongType
     , prettyLongTypes
     , prettyTypes
@@ -18,8 +19,8 @@ import Text.PrettyPrint.ANSI.Leijen
 import Language.PureScript.Environment (tyFunction, tyRecord)
 import Language.PureScript.Types (Constraint(..), Type(..), everywhereOnTypes,
                                   everywhereOnTypesTopDown)
-import Language.PureScript.Names (ProperName(ProperName), Qualified(Qualified),
-                                  runOpName, runProperName, showQualified)
+import Language.PureScript.Names (Qualified(Qualified), runOpName,
+                                  runProperName, showQualified)
 import Language.PureScript.Kinds (Kind)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
@@ -31,7 +32,7 @@ import Symbols (doubleColon, forall, pipe, rightArrow, rightFatArrow,
                 underscore)
 
 prettyType :: Config -> Type -> Doc
-prettyType config typ' = case insertPlaceholders typ' of
+prettyType config = \case
     TypeWildcard _ -> underscore
     TypeVar var -> text var
     TypeLevelString s -> dquotes (text s)
@@ -94,11 +95,12 @@ prettyTypes config types
     | null types = empty
     | otherwise = space <> hsep (fmap (prettyType config) types)
 
+prettyShortType :: Config -> Type -> Doc
+prettyShortType config = prettyType config . insertPlaceholders
+
 prettyLongType :: Config -> Type -> Doc
-prettyLongType config typ = case typ of
+prettyLongType config typ = case insertPlaceholders typ of
     PrettyPrintObject row -> prettyLongRow config lbrace rbrace row
-    TypeApp (TypeConstructor (Qualified _ (ProperName "Record"))) s ->
-        prettyLongRow config lbrace rbrace s
     row@RCons{} -> prettyLongRow config lparen rparen row
     _ -> prettyType config typ
 

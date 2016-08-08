@@ -20,12 +20,11 @@ import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 import Names ()
-import Types (prettyConstraints, prettyLongType, prettyLongTypes, prettyType,
-              prettyTypeList)
+import Types (prettyConstraints, prettyLongType, prettyLongTypes,
+              prettyShortType, prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
-import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList,
-               prettyTupled)
+import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList)
 import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
@@ -65,8 +64,6 @@ instance Pretty DeclarationRef where
         ReExportRef _moduleName _ref -> text "ReExportRef"
         PositionedDeclarationRef _ comments declarationRef ->
             prettyList comments <> pretty declarationRef
-
-    prettyList = prettyTupled . fmap pretty
 
 prettyDeclaration :: Config -> Declaration -> Doc
 prettyDeclaration config@Config{..} = \case
@@ -112,7 +109,7 @@ prettyDeclaration config@Config{..} = \case
                 | otherwise = space <> prettyTypeList config params
     TypeDeclaration ident typ ->
         nest configIndent
-            (pretty ident </> doubleColon config <+> prettyType config typ)
+            (pretty ident </> doubleColon config <+> prettyShortType config typ)
     ValueDeclaration ident _nameKind binders expr ->
         pretty ident <> binders' <> body
         where
@@ -136,7 +133,7 @@ prettyDeclaration config@Config{..} = \case
             <+> text "import"
             <+> pretty tdent
             </> doubleColon config
-            <+> prettyType config typ
+            <+> prettyShortType config typ
             )
     ExternDataDeclaration properName kin ->
         nest configIndent
@@ -183,7 +180,7 @@ prettyDeclaration config@Config{..} = \case
                 <+> doubleColon config
                 <> prettyConstraints config space rightFatArrow constraints
                 <+> pretty qualified
-                <+> prettyType config (head types)
+                <+> prettyShortType config (head types)
     PositionedDeclaration _ comments declaration ->
         prettyList comments <> prettyDeclaration config declaration
 
@@ -265,7 +262,9 @@ prettyExpr config@Config{..} = \case
         <$> indent configIndent
             (vsep (fmap (prettyCaseAlternative config) caseAlternatives))
     TypedValue _ expr typ ->
-        prettyExpr config expr <+> doubleColon config <+> prettyType config typ
+        prettyExpr config expr
+        <+> doubleColon config
+        <+> prettyShortType config typ
     Let decls expr ->
         prettyExpr config expr
         <$> text "where"
@@ -422,4 +421,4 @@ prettyBinder config = \case
     TypedBinder typ binder ->
         prettyBinder config binder
         <+> doubleColon config
-        <+> prettyType config typ
+        <+> prettyShortType config typ
