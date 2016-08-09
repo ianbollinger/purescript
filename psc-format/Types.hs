@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Types
     ( prettyType
@@ -24,15 +25,15 @@ import Language.PureScript.Names (Qualified(Qualified), runProperName)
 import Language.PureScript.Kinds (Kind)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
-import Config (Config)
+import Config (Config(..))
 import Kind (prettyKind)
 import Names ()
-import Pretty (listify)
+import Pretty (prettySingleLineList)
 import Symbols (discretionarySpace, doubleColon, forall, pipe, rightArrow,
                 rightFatArrow, underscore)
 
 prettyType :: Config -> Type -> Doc
-prettyType config = \case
+prettyType config@Config{..} = \case
     TypeWildcard _ -> underscore
     TypeVar var -> text var
     TypeLevelString s -> dquotes (text s)
@@ -46,13 +47,19 @@ prettyType config = \case
     TUnknown u -> underscore <> int u
     Skolem name s _ _ -> text (name ++ show s ++ "skolem")
     REmpty -> parens empty
-    TypeApp t s -> prettyType config t <+> prettyType config s
+    app@TypeApp{} ->
+        nest (2 * configIndent) (group (go app))
+        where
+            go = \case
+                TypeApp t s -> go t <$> prettyType config s
+                t -> prettyType config t
     row@RCons{} -> prettyRow config lparen rparen row
     TypeOp op -> pretty op
     BinaryNoParensType op l r ->
         prettyType config l <+> prettyType config op <+> prettyType config r
     ParensInType typ ->
-        prettyFunctionType (\c -> discretionarySpace c <> lparen) config typ <> rparen
+        nest configIndent
+            (prettyFunctionType config (lparen <> flatAlt space empty) (linebreak <> discretionarySpace config <> rparen) typ)
     ForAll s t _ -> prettyForAll config s t []
     ConstrainedType constraints typ ->
         prettyConstraints config empty space rightFatArrow constraints
@@ -79,9 +86,10 @@ insertPlaceholders = everywhereOnTypesTopDown convertForAlls . everywhereOnTypes
     go idents other = PrettyPrintForAll idents other
   convertForAlls other = other
 
-prettyFunctionType :: Config -> (Config -> Doc) -> Type -> Doc
-prettyFunctionType config before typ' =
-    group (line <> before config <+> prettyPrint (insertPlaceholders typ'))
+-- TODO: don't insertPlaceholders twice!
+prettyFunctionType :: Config -> Doc -> Doc -> Type -> Doc
+prettyFunctionType config before after typ' =
+    group (before <> prettyPrint (insertPlaceholders typ') <> after)
     where
         prettyPrint = \case
             PrettyPrintForAll xs typ ->
@@ -95,6 +103,10 @@ prettyFunctionType config before typ' =
                 <+> prettyPrint typ
             PrettyPrintFunction a b ->
                 prettyType config a <$> rightArrow config <+> prettyPrint b
+            BinaryNoParensType op l r ->
+                prettyType config l
+                <$> prettyType config op
+                <+> prettyType config r
             t -> prettyType config t
 
 prettyTypes :: Config -> [Type] -> Doc
@@ -120,7 +132,6 @@ prettyConstraint :: Config -> Constraint -> Doc
 prettyConstraint config (Constraint class' args _) =
     pretty class' <> prettyTypes config args
 
--- TODO: avoid soft breaks if nested.
 prettyConstraints
     :: Config
     -> Doc
@@ -128,16 +139,16 @@ prettyConstraints
     -> (Config -> Doc)
     -> [Constraint]
     -> Doc
-prettyConstraints config begin preArrow arrow constraints
-    | null constraints = empty
-    | length constraints == 1 =
+prettyConstraints config begin preArrow arrow = \case
+    [] -> empty
+    [constraint] ->
         begin
-        <> prettyConstraint config (head constraints)
+        <> prettyConstraint config constraint
         <> preArrow
         <> arrow config
-    | otherwise =
+    constraints ->
         begin
-        <> parens (listify (fmap (prettyConstraint config) constraints))
+        <> prettySingleLineList lparen rparen (fmap (prettyConstraint config) constraints)
         <> preArrow
         <> arrow config
 

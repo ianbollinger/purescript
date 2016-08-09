@@ -102,7 +102,7 @@ prettyDeclaration config@Config{..} = \case
             ( text "type"
             <+> pretty propertyName
             <> params'
-            <> prettyFunctionType config (\c -> discretionarySpace c <> equals) typ
+            <> prettyFunctionType config (line <> discretionarySpace config <> equals <> space) empty typ
             )
         where
             params'
@@ -111,7 +111,7 @@ prettyDeclaration config@Config{..} = \case
     TypeDeclaration ident typ ->
         nest configIndent
             ( pretty ident
-            <> prettyFunctionType config doubleColon typ
+            <> prettyFunctionType config (line <> doubleColon config <> space) empty typ
             )
     ValueDeclaration ident _nameKind binders expr ->
         pretty ident <> binders' <> body
@@ -135,7 +135,7 @@ prettyDeclaration config@Config{..} = \case
             ( text "foreign"
             <+> text "import"
             <+> pretty ident
-            <> prettyFunctionType config doubleColon typ
+            <> prettyFunctionType config (line <> doubleColon config <> space) empty typ
             )
     ExternDataDeclaration properName kin ->
         nest configIndent
