@@ -2,7 +2,7 @@
 
 module Symbols where
 
-import Text.PrettyPrint.ANSI.Leijen (Doc, char, text)
+import Text.PrettyPrint.ANSI.Leijen (Doc, char, empty, flatAlt, space, text)
 
 import Config (Config(..))
 
@@ -47,3 +47,8 @@ forall :: Config -> Doc
 forall Config{..}
     | configUnicode = char '∀'
     | otherwise = text "forall"
+
+discretionarySpace :: Config -> Doc
+discretionarySpace Config{..}
+    | configUnicode = empty
+    | otherwise = flatAlt space empty

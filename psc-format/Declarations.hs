@@ -27,8 +27,8 @@ import Kind (prettyKind)
 import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList,
                prettySingleLineList)
 import Comments ()
-import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
-                rightFatArrow, tick, underscore)
+import Symbols (at, discretionarySpace, doubleColon, leftArrow, leftFatArrow,
+                pipe, rightArrow, rightFatArrow, tick, underscore)
 
 prettyAbs :: Config -> Ident -> Expr -> Bool -> Doc
 prettyAbs config arg val isFirstAbs =
@@ -102,7 +102,7 @@ prettyDeclaration config@Config{..} = \case
             ( text "type"
             <+> pretty propertyName
             <> params'
-            <> prettyFunctionType config (const (flatAlt space empty <> equals)) typ
+            <> prettyFunctionType config (\c -> discretionarySpace c <> equals) typ
             )
         where
             params'

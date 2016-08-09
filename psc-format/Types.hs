@@ -20,8 +20,7 @@ import Text.PrettyPrint.ANSI.Leijen
 import Language.PureScript.Environment (tyFunction, tyRecord)
 import Language.PureScript.Types (Constraint(..), Type(..), everywhereOnTypes,
                                   everywhereOnTypesTopDown)
-import Language.PureScript.Names (Qualified(Qualified), runOpName,
-                                  runProperName, showQualified)
+import Language.PureScript.Names (Qualified(Qualified), runProperName)
 import Language.PureScript.Kinds (Kind)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
@@ -29,8 +28,8 @@ import Config (Config)
 import Kind (prettyKind)
 import Names ()
 import Pretty (listify)
-import Symbols (doubleColon, forall, pipe, rightArrow, rightFatArrow,
-                underscore)
+import Symbols (discretionarySpace, doubleColon, forall, pipe, rightArrow,
+                rightFatArrow, underscore)
 
 prettyType :: Config -> Type -> Doc
 prettyType config = \case
@@ -49,10 +48,11 @@ prettyType config = \case
     REmpty -> parens empty
     TypeApp t s -> prettyType config t <+> prettyType config s
     row@RCons{} -> prettyRow config lparen rparen row
-    TypeOp op -> text (showQualified runOpName op)
+    TypeOp op -> pretty op
     BinaryNoParensType op l r ->
         prettyType config l <+> prettyType config op <+> prettyType config r
-    ParensInType typ -> parens (prettyType config typ)
+    ParensInType typ ->
+        prettyFunctionType (\c -> discretionarySpace c <> lparen) config typ <> rparen
     ForAll s t _ -> prettyForAll config s t []
     ConstrainedType constraints typ ->
         prettyConstraints config empty space rightFatArrow constraints
@@ -87,7 +87,7 @@ prettyFunctionType config before typ' =
             PrettyPrintForAll xs typ ->
                 forall config
                 <+> hsep (fmap text xs)
-                <$$> flatAlt space empty
+                <$$> discretionarySpace config
                 <> dot
                 <+> prettyPrint typ
             ConstrainedType constraints typ ->
