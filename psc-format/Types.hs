@@ -6,6 +6,7 @@ module Types
     , prettyShortType
     , prettyLongType
     , prettyLongTypes
+    , prettyFunctionType
     , prettyTypes
     , prettyConstraint
     , prettyConstraints
@@ -54,13 +55,12 @@ prettyType config = \case
     ParensInType typ -> parens (prettyType config typ)
     ForAll s t _ -> prettyForAll config s t []
     ConstrainedType constraints typ ->
-        prettyConstraints config empty rightFatArrow constraints
+        prettyConstraints config empty space rightFatArrow constraints
         <+> prettyType config typ
     KindedType typ kind ->
         prettyType config typ <+> doubleColon config <+> prettyKind config kind
-    f@PrettyPrintFunction{} ->
-        prettyFunctionType config f
-        --prettyType config typ1 </> rightArrow config <+> prettyType config typ2
+    PrettyPrintFunction typ1 typ2 ->
+        prettyType config typ1 <+> rightArrow config <+> prettyType config typ2
     PrettyPrintForAll xs typ ->
         forall config <+> typeVars <> dot <+> prettyType config typ
         where
@@ -79,16 +79,23 @@ insertPlaceholders = everywhereOnTypesTopDown convertForAlls . everywhereOnTypes
     go idents other = PrettyPrintForAll idents other
   convertForAlls other = other
 
-prettyFunctionType :: Config -> Type -> Doc
-prettyFunctionType config = \case
-    PrettyPrintFunction x y ->
-        sep (prettyType config x : go y)
-        where
-            go (PrettyPrintFunction a b) =
-                (rightArrow config <+> prettyType config a) : go b
-            go a =
-                [rightArrow config <+> prettyType config a]
-    t -> prettyType config t
+prettyFunctionType :: Config -> (Config -> Doc) -> Type -> Doc
+prettyFunctionType config before typ' =
+    group (line <> before config <+> prettyPrint (insertPlaceholders typ'))
+    where
+        prettyPrint = \case
+            PrettyPrintForAll xs typ ->
+                forall config
+                <+> hsep (fmap text xs)
+                <$$> flatAlt space empty
+                <> dot
+                <+> prettyPrint typ
+            ConstrainedType constraints typ ->
+                prettyConstraints config empty line rightFatArrow constraints
+                <+> prettyPrint typ
+            PrettyPrintFunction a b ->
+                prettyType config a <$> rightArrow config <+> prettyPrint b
+            t -> prettyType config t
 
 prettyTypes :: Config -> [Type] -> Doc
 prettyTypes config types
@@ -102,7 +109,7 @@ prettyLongType :: Config -> Type -> Doc
 prettyLongType config typ = case insertPlaceholders typ of
     PrettyPrintObject row -> prettyLongRow config lbrace rbrace row
     row@RCons{} -> prettyLongRow config lparen rparen row
-    _ -> prettyType config typ
+    x -> prettyType config x
 
 prettyLongTypes :: Config -> [Type] -> Doc
 prettyLongTypes config types
@@ -113,17 +120,26 @@ prettyConstraint :: Config -> Constraint -> Doc
 prettyConstraint config (Constraint class' args _) =
     pretty class' <> prettyTypes config args
 
-prettyConstraints :: Config -> Doc -> (Config -> Doc) -> [Constraint] -> Doc
-prettyConstraints config begin arrow constraints
+-- TODO: avoid soft breaks if nested.
+prettyConstraints
+    :: Config
+    -> Doc
+    -> Doc
+    -> (Config -> Doc)
+    -> [Constraint]
+    -> Doc
+prettyConstraints config begin preArrow arrow constraints
     | null constraints = empty
     | length constraints == 1 =
         begin
         <> prettyConstraint config (head constraints)
-        </> arrow config
+        <> preArrow
+        <> arrow config
     | otherwise =
         begin
         <> parens (listify (fmap (prettyConstraint config) constraints))
-        </> arrow config
+        <> preArrow
+        <> arrow config
 
 prettyForAll :: Config -> String -> Type -> [String] -> Doc
 prettyForAll config typeVar typ vars =

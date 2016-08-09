@@ -20,7 +20,7 @@ import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 import Names ()
-import Types (prettyConstraints, prettyLongType, prettyLongTypes,
+import Types (prettyConstraints, prettyFunctionType, prettyLongTypes,
               prettyShortType, prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
@@ -102,8 +102,7 @@ prettyDeclaration config@Config{..} = \case
             ( text "type"
             <+> pretty propertyName
             <> params'
-            <+> equals
-            <+> prettyLongType config typ
+            <> prettyFunctionType config (const (flatAlt space empty <> equals)) typ
             )
         where
             params'
@@ -111,7 +110,9 @@ prettyDeclaration config@Config{..} = \case
                 | otherwise = space <> prettyTypeList config params
     TypeDeclaration ident typ ->
         nest configIndent
-            (pretty ident </> doubleColon config <+> prettyShortType config typ)
+            ( pretty ident
+            <> prettyFunctionType config doubleColon typ
+            )
     ValueDeclaration ident _nameKind binders expr ->
         pretty ident <> binders' <> body
         where
@@ -129,13 +130,12 @@ prettyDeclaration config@Config{..} = \case
                 [] -> empty
                 _ -> space <> sep (fmap (prettyBinder config) binders)
     BindingGroupDeclaration _is -> text "BindingGroupDeclaration"
-    ExternDeclaration tdent typ ->
+    ExternDeclaration ident typ ->
         nest configIndent
             ( text "foreign"
             <+> text "import"
-            <+> pretty tdent
-            </> doubleColon config
-            <+> prettyShortType config typ
+            <+> pretty ident
+            <> prettyFunctionType config doubleColon typ
             )
     ExternDataDeclaration properName kin ->
         nest configIndent
@@ -163,7 +163,7 @@ prettyDeclaration config@Config{..} = \case
                     <+> pretty qualifiedModuleName'
     TypeClassDeclaration properName a constraints declarations ->
         text "class"
-        <> prettyConstraints config space leftFatArrow constraints
+        <> prettyConstraints config space space leftFatArrow constraints
         <+> pretty properName
         <+> prettyTypeList config a
         <+> text "where"
@@ -180,7 +180,7 @@ prettyDeclaration config@Config{..} = \case
                 text "instance"
                 <+> pretty ident
                 <+> doubleColon config
-                <> prettyConstraints config space rightFatArrow constraints
+                <> prettyConstraints config space space rightFatArrow constraints
                 <+> pretty qualified
                 <+> prettyShortType config (head types)
     PositionedDeclaration _ comments declaration ->
