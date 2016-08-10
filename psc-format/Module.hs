@@ -14,13 +14,11 @@ import Language.PureScript.AST.Declarations (Declaration(..), Module(..),
 
 import Text.PrettyPrint.ANSI.Leijen
 
-import Config
+import Config (Config(..))
 import Names ()
 import Declarations (prettyDeclaration, prettyDeclarations)
 import Comments ()
-
-vSpace :: Doc
-vSpace = hardline <> hardline
+import Pretty (prettyLongList)
 
 prettyModule :: Config -> Module -> Doc
 prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
@@ -29,12 +27,17 @@ prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
     <+> pretty moduleName
     <> exports'
     <+> text "where"
-    <> vSpace
-    <> prettyDeclarations config (sortBy sorter imports')
-    <> vSpace
-    <> prettyTopLevelDeclarations config decls'
     <> hardline
+    <> imports''
+    <> decls''
     where
+        imports'' = case imports' of
+            [] -> empty
+            _ ->
+                hardline <> prettyDeclarations config (sortBy sorter imports') <> hardline
+        decls'' =  case decls' of
+            [] -> empty
+            _ -> hardline <> prettyTopLevelDeclarations config decls' <> hardline
         (imports', decls') = span isImportDecl decls
         sorter decl1 decl2 = case (decl1, decl2) of
             (PositionedDeclaration _ _ (ImportDeclaration moduleName1 _ _), PositionedDeclaration _ _ (ImportDeclaration moduleName2 _ _))
@@ -48,12 +51,7 @@ prettyModule config@Config{..} (Module _ comments moduleName decls exports) =
         exports' = case exports of
             Nothing -> empty
             Just refs ->
-                empty
-                <$> indent configIndent (makeList (fmap pretty refs))
-        makeList docs = case docs of
-            [] -> parens line
-            x : xs ->
-                parens (space <> vcat (x : fmap ((comma <> space) <>) xs) <> line)
+                nest configIndent (prettyLongList lparen rparen (fmap pretty refs))
 
 prettyTopLevelDeclarations :: Config -> [Declaration] -> Doc
 prettyTopLevelDeclarations config = \case
