@@ -269,9 +269,13 @@ prettyExpr config@Config{..} = \case
         <+> doubleColon config
         <> prettyShortType config space typ
     Let decls expr ->
-        prettyExpr config expr
-        <$> text "where"
-        <$> prettyDeclarations config decls
+        line
+        <> nest 4
+            ( text "let"
+            <+> prettyDeclarations config decls
+            )
+        <$> text "in"
+        <+> nest configIndent (prettyExpr config expr)
     Do doNotationElements ->
         text "do"
         <$> vsep (fmap (prettyDoNotationElement config) doNotationElements)
