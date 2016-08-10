@@ -20,15 +20,15 @@ import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 import Names ()
-import Types (prettyConstraints, prettyFunctionType, prettyLongTypes,
-              prettyShortType, prettyTypeList)
+import Types (prettyConstraints, prettyLongType, prettyShortType, prettyType,
+              prettyTypes, prettyTypeList)
 import Config (Config(..))
 import Kind (prettyKind)
-import Pretty (listify, prettyEncloseSep, prettyLongList, prettyShortList,
-               prettySingleLineList)
+import Pretty (listify, prettyEncloseSep, prettyLongList, prettySingleLineList,
+               spaceSeparatedList)
 import Comments ()
-import Symbols (at, discretionarySpace, doubleColon, leftArrow, leftFatArrow,
-                pipe, rightArrow, rightFatArrow, tick, underscore)
+import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
+                rightFatArrow, tick, underscore)
 
 prettyAbs :: Config -> Ident -> Expr -> Bool -> Doc
 prettyAbs config arg val isFirstAbs =
@@ -69,11 +69,11 @@ instance Pretty DeclarationRef where
 
 prettyDeclaration :: Config -> Declaration -> Doc
 prettyDeclaration config@Config{..} = \case
-    DataDeclaration dataDeclType properName lT constructors ->
+    DataDeclaration dataDeclType properName leftTypes constructors ->
         nest configIndent
             ( text dataLabel
             <+> pretty properName
-            <> leftTypes
+            <> prettyTypeList config leftTypes
             <> constructors'
             )
         where
@@ -81,37 +81,31 @@ prettyDeclaration config@Config{..} = \case
                 case dataDeclType of
                     Data -> "data"
                     Newtype -> "newtype"
-            leftTypes
-                | null lT = empty
-                | otherwise = space <> prettyTypeList config lT
             constructors' = case constructors of
                 [] -> empty
                 [(n, ts)] ->
-                    space <> equals <+> pretty n <> prettyLongTypes config ts
+                    space <> equals <+> pretty n <> prettyTypes config ts
                 x : xs ->
                     empty
                     <$> equals
                     <+> formatConstructor x
                     <$> vsep (fmap (\c -> pipe <+> formatConstructor c) xs)
             formatConstructor (n, ts) =
-                nest configIndent (pretty n <> prettyLongTypes config ts)
+                nest configIndent (pretty n <> prettyTypes config ts)
     DataBindingGroupDeclaration _declarations ->
         text "DataBindingGroupDeclaration"
     TypeSynonymDeclaration propertyName params typ ->
         nest configIndent
             ( text "type"
             <+> pretty propertyName
-            <> params'
-            <> prettyFunctionType config (line <> discretionarySpace config <> equals <> space) empty typ
+            <> prettyTypeList config params
+            <+> equals
+            <> prettyLongType config (flatAlt line space) typ
             )
-        where
-            params'
-                | null params = empty
-                | otherwise = space <> prettyTypeList config params
     TypeDeclaration ident typ ->
         nest configIndent
             ( pretty ident
-            <> prettyFunctionType config (line <> doubleColon config <> space) empty typ
+            <> prettyType config (line <> doubleColon config) space empty typ
             )
     ValueDeclaration ident _nameKind binders expr ->
         pretty ident <> binders' <> body
@@ -135,7 +129,7 @@ prettyDeclaration config@Config{..} = \case
             ( text "foreign"
             <+> text "import"
             <+> pretty ident
-            <> prettyFunctionType config (line <> doubleColon config <> space) empty typ
+            <> prettyType config (line <> doubleColon config) space empty typ
             )
     ExternDataDeclaration properName kin ->
         nest configIndent
@@ -165,9 +159,15 @@ prettyDeclaration config@Config{..} = \case
         text "class"
         <> prettyConstraints config space space leftFatArrow constraints
         <+> pretty properName
-        <+> prettyTypeList config a
-        <+> text "where"
-        <$> indent configIndent (prettyDeclarations config declarations)
+        <> prettyTypeList config a
+        <> body
+        where
+            body = case declarations of
+                [] -> empty
+                _ ->
+                    space
+                    <> text "where"
+                    <$> indent configIndent (prettyDeclarations config declarations)
     TypeInstanceDeclaration ident constraints qualified types body ->
         case body of
             DerivedInstance -> text "derive" <+> header
@@ -182,7 +182,8 @@ prettyDeclaration config@Config{..} = \case
                 <+> doubleColon config
                 <> prettyConstraints config space space rightFatArrow constraints
                 <+> pretty qualified
-                <+> prettyShortType config (head types)
+                -- TODO: why are we only taking the first type?
+                <> prettyShortType config space (head types)
     PositionedDeclaration _ comments declaration ->
         prettyList comments <> prettyDeclaration config declaration
 
@@ -266,7 +267,7 @@ prettyExpr config@Config{..} = \case
     TypedValue _ expr typ ->
         prettyExpr config expr
         <+> doubleColon config
-        <+> prettyShortType config typ
+        <> prettyShortType config space typ
     Let decls expr ->
         prettyExpr config expr
         <$> text "where"
@@ -294,7 +295,7 @@ instance Pretty ImportDeclarationType where
         Hiding refs ->
             space
             <> text "hiding"
-            <+> prettyShortList lparen rparen (fmap pretty refs)
+            <+> prettySingleLineList lparen rparen (fmap pretty refs)
 
 prettyDoNotationElement :: Config -> DoNotationElement -> Doc
 prettyDoNotationElement config@Config{..} = \case
@@ -375,7 +376,7 @@ isExprLong = \case
     ObjectUpdate _ _ -> True
     Abs _ _ -> True
     App expr1 expr2 -> isExprLong expr1 || isExprLong expr2
-    IfThenElse _ _ _ -> True
+    IfThenElse{} -> True
     Case _ _ -> True
     TypedValue _ expr _ -> isExprLong expr
     Let _ _ -> True
@@ -405,11 +406,9 @@ prettyBinder config = \case
     NullBinder -> underscore
     LiteralBinder literalBinder -> prettyLiteralBinder config literalBinder
     VarBinder ident -> pretty ident
-    ConstructorBinder constructorName binders -> pretty constructorName <> bs
-        where
-            bs = case binders of
-                [] -> empty
-                _ -> space <> hsep (fmap (prettyBinder config) binders)
+    ConstructorBinder constructorName binders ->
+        pretty constructorName
+        <> spaceSeparatedList (fmap (prettyBinder config) binders)
     OpBinder valueOpName -> pretty valueOpName
     BinaryNoParensBinder opBinder binder1 binder2 ->
         prettyBinder config binder1
@@ -423,4 +422,4 @@ prettyBinder config = \case
     TypedBinder typ binder ->
         prettyBinder config binder
         <+> doubleColon config
-        <+> prettyShortType config typ
+        <> prettyShortType config space typ

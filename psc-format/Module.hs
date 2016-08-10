@@ -59,7 +59,7 @@ prettyTopLevelDeclarations :: Config -> [Declaration] -> Doc
 prettyTopLevelDeclarations config = \case
     [] -> empty
     [decl] -> prettyDeclaration config decl
-    x@(PositionedDeclaration _ _ TypeDeclaration{}) : y@(PositionedDeclaration _ _ ValueDeclaration{}) : [] ->
+    [x@(PositionedDeclaration _ _ TypeDeclaration{}), y@(PositionedDeclaration _ _ ValueDeclaration{})] ->
         prettyDeclaration config x <$> prettyDeclaration config y
     x@(PositionedDeclaration _ _ TypeDeclaration{}) : y@(PositionedDeclaration _ _ ValueDeclaration{}) : xs ->
         prettyDeclaration config x

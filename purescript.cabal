@@ -395,7 +395,8 @@ executable psc-format
                    purescript -any,
                    ansi-wl-pprint >= 0.6.7.3
     main-is: Main.hs
-    other-modules: Names
+    other-modules: Crash
+                   Names
                    Declarations
                    Kind
                    Config

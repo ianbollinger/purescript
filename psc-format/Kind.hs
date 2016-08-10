@@ -19,6 +19,6 @@ prettyKind config = \case
     Row kind -> char '#' <+> prettyKind config kind
     FunKind kind1 kind2 ->
         prettyKind config kind1
-        </> rightArrow config
+        <+> rightArrow config
         <+> prettyKind config kind2
     Symbol -> text "Symbol"
