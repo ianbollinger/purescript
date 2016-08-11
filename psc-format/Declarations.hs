@@ -19,6 +19,7 @@ import Language.PureScript.Environment (DataDeclType(..))
 import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
+import Crash (internalError)
 import Names ()
 import Types (prettyConstraints, prettyLongType, prettyShortType, prettyType,
               prettyTypes, prettyTypeList)
@@ -61,11 +62,11 @@ instance Pretty DeclarationRef where
         ValueRef ident -> pretty ident
         ValueOpRef opName -> parens (pretty opName)
         TypeClassRef properName -> text "class" <+> pretty properName
-        TypeInstanceRef _ident -> text "TypeInstanceRef"
         ModuleRef moduleName -> text "module" <+> pretty moduleName
-        ReExportRef _moduleName _ref -> text "ReExportRef"
         PositionedDeclarationRef _ comments declarationRef ->
             prettyList comments <> pretty declarationRef
+        TypeInstanceRef _ -> internalError "TypeInstanceRef encountered."
+        ReExportRef _ _ -> internalError "ReExportRef encountered."
 
 prettyDeclaration :: Config -> Declaration -> Doc
 prettyDeclaration config@Config{..} = \case
@@ -92,8 +93,6 @@ prettyDeclaration config@Config{..} = \case
                     <$> vsep (fmap (\c -> pipe <+> formatConstructor c) xs)
             formatConstructor (n, ts) =
                 nest configIndent (pretty n <> prettyTypes config ts)
-    DataBindingGroupDeclaration _declarations ->
-        text "DataBindingGroupDeclaration"
     TypeSynonymDeclaration propertyName params typ ->
         nest configIndent
             ( text "type"
@@ -123,7 +122,6 @@ prettyDeclaration config@Config{..} = \case
             binders' = case binders of
                 [] -> empty
                 _ -> space <> sep (fmap (prettyBinder config) binders)
-    BindingGroupDeclaration _is -> text "BindingGroupDeclaration"
     ExternDeclaration ident typ ->
         nest configIndent
             ( text "foreign"
@@ -186,6 +184,11 @@ prettyDeclaration config@Config{..} = \case
                 <> prettyShortType config space (head types)
     PositionedDeclaration _ comments declaration ->
         prettyList comments <> prettyDeclaration config declaration
+    DataBindingGroupDeclaration _ ->
+        internalError "DataBindingGroupDeclaration encountered."
+    BindingGroupDeclaration _ ->
+        internalError "BindingGroupDeclaration encountered."
+
 
 prettyGuardExpr :: Config -> (Config -> Doc) -> (Guard, Expr) -> Doc
 prettyGuardExpr config@Config{..} symbol (guard, expr') =
@@ -279,17 +282,17 @@ prettyExpr config@Config{..} = \case
     Do doNotationElements ->
         text "do"
         <$> vsep (fmap (prettyDoNotationElement config) doNotationElements)
-    TypeClassDictionaryConstructorApp _qualified _expr ->
-        text "TypeClassDictionaryConstructorApp"
-    TypeClassDictionary _constraint _a -> text "TypeClassDictionary"
-    TypeClassDictionaryAccessor _qualified _ident ->
-        text "TypeClassDictionaryAccessor"
-    SuperClassDictionary _qualified _types ->
-        text "SuperClassDictionary"
     AnonymousArgument -> underscore
     Hole hole -> text ('?' : hole)
     PositionedValue _ comments expr ->
         prettyList comments <> prettyExpr config expr
+    TypeClassDictionaryConstructorApp _ _ ->
+        internalError "TypeClassDictionaryConstructorApp encountered."
+    TypeClassDictionary _ _ -> internalError "TypeClassDictionary encountered."
+    TypeClassDictionaryAccessor _ _ ->
+        internalError "TypeClassDictionaryAccessor encountered."
+    SuperClassDictionary _ _ ->
+        internalError "SuperClassDictionary encountered."
 
 instance Pretty ImportDeclarationType where
     pretty = \case
@@ -349,7 +352,7 @@ prettyLiteral = \case
     StringLiteral s -> dquotes (text s)
     CharLiteral c -> squotes (char c)
     BooleanLiteral b -> text $ if b then "true" else "false"
-    _ -> error "Internal error: unknown literal."
+    _ -> internalError "Unknown literal encountered."
 
 prettyLiteralExpr :: Config -> Literal Expr -> Doc
 prettyLiteralExpr config@Config{..} literal = case literal of
