@@ -23,8 +23,7 @@ import Language.PureScript.AST.Declarations (CaseAlternative(..),
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.Operators (Fixity(..), showAssoc)
 import Language.PureScript.Environment (showDataDeclType)
-import Language.PureScript.Names (Ident, runProperName, showIdent,
-                                  showQualified)
+import Language.PureScript.Names (runProperName, showIdent, showQualified)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
 import Comments ()
@@ -38,23 +37,6 @@ import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
 import Types (prettyConstraints, prettyLongType, prettyShortType, prettyType,
               prettyTypes, prettyTypeList)
-
-prettyAbs :: Config -> Ident -> Expr -> Bool -> Doc
-prettyAbs config arg val isFirstAbs =
-    case (val, isFirstAbs) of
-        (Abs (Left argN) valN, True) ->
-            backslash
-            <> text (showIdent arg)
-            <+> prettyAbs config argN valN False
-        (_, True) ->
-            backslash
-            <> text (showIdent arg)
-            <+> rightArrow config
-            </> prettyExpr config val
-        _ ->
-            text (showIdent arg)
-            <+> rightArrow config
-            </> prettyExpr config val
 
 instance Pretty DeclarationRef where
     pretty = \case
@@ -244,12 +226,7 @@ prettyExpr config@Config{..} = \case
                 | otherwise = prettyEncloseSep
             keyValues =
                 fmap (prettyKeyValue config prettyExpr (space <> equals)) ps
-    Abs (Left arg) val -> prettyAbs config arg val True
-    Abs (Right arg) val ->
-        backslash
-        <> prettyBinder config arg
-        <+> rightArrow config
-        <$> indent configIndent (prettyExpr config val)
+    abstraction@Abs{} -> prettyAbs config abstraction
     app@App{} -> group (prettyApp app)
         where
             prettyApp = \case
@@ -297,6 +274,14 @@ prettyExpr config@Config{..} = \case
         internalError "TypeClassDictionaryAccessor encountered."
     SuperClassDictionary _ _ ->
         internalError "SuperClassDictionary encountered."
+
+prettyAbs :: Config -> Expr -> Doc
+prettyAbs config = (backslash <>) . go
+    where
+        go = \case
+            Abs (Left arg) val -> text (showIdent arg) <+> go val
+            Abs (Right arg) val -> prettyBinder config arg <+> go val
+            val -> rightArrow config </> prettyExpr config val
 
 instance Pretty ImportDeclarationType where
     pretty = \case
