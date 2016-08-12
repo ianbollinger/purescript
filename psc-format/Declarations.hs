@@ -12,24 +12,32 @@ import Prelude hiding ((<$>))
 import Text.PrettyPrint.ANSI.Leijen
 
 import Language.PureScript.AST.Binders (Binder(..))
-import Language.PureScript.AST.Declarations
+import Language.PureScript.AST.Declarations (CaseAlternative(..),
+                                             Declaration(..),
+                                             DeclarationRef(..),
+                                             DoNotationElement(..), Expr(..),
+                                             Guard, ImportDeclarationType(..),
+                                             TypeFixity(..),
+                                             TypeInstanceBody(..),
+                                             ValueFixity(..))
 import Language.PureScript.AST.Literals (Literal(..))
 import Language.PureScript.AST.Operators (Fixity(..), showAssoc)
-import Language.PureScript.Environment (DataDeclType(..))
-import Language.PureScript.Names (Ident(..), Qualified(..), showIdent)
+import Language.PureScript.Environment (showDataDeclType)
+import Language.PureScript.Names (Ident, runProperName, showIdent,
+                                  showQualified)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
-import Crash (internalError)
-import Names ()
-import Types (prettyConstraints, prettyLongType, prettyShortType, prettyType,
-              prettyTypes, prettyTypeList)
+import Comments ()
 import Config (Config(..))
+import Crash (internalError)
 import Kind (prettyKind)
+import Names ()
 import Pretty (listify, prettyEncloseSep, prettyLongList, prettySingleLineList,
                spaceSeparatedList)
-import Comments ()
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
+import Types (prettyConstraints, prettyLongType, prettyShortType, prettyType,
+              prettyTypes, prettyTypeList)
 
 prettyAbs :: Config -> Ident -> Expr -> Bool -> Doc
 prettyAbs config arg val isFirstAbs =
@@ -72,16 +80,12 @@ prettyDeclaration :: Config -> Declaration -> Doc
 prettyDeclaration config@Config{..} = \case
     DataDeclaration dataDeclType properName leftTypes constructors ->
         nest configIndent
-            ( text dataLabel
+            ( text (showDataDeclType dataDeclType)
             <+> pretty properName
             <> prettyTypeList config leftTypes
             <> constructors'
             )
         where
-            dataLabel =
-                case dataDeclType of
-                    Data -> "data"
-                    Newtype -> "newtype"
             constructors' = case constructors of
                 [] -> empty
                 [(n, ts)] ->
@@ -106,7 +110,7 @@ prettyDeclaration config@Config{..} = \case
             ( pretty ident
             <> prettyType config (line <> doubleColon config) space empty typ
             )
-    ValueDeclaration ident _nameKind binders expr ->
+    ValueDeclaration ident _ binders expr ->
         pretty ident <> binders' <> body
         where
             body = case expr of
@@ -119,9 +123,7 @@ prettyDeclaration config@Config{..} = \case
                         <> equals
                         </> prettyExpr config expression
                         )
-            binders' = case binders of
-                [] -> empty
-                _ -> space <> sep (fmap (prettyBinder config) binders)
+            binders' = spaceSeparatedList (fmap (prettyBinder config) binders)
     ExternDeclaration ident typ ->
         nest configIndent
             ( text "foreign"
@@ -189,7 +191,6 @@ prettyDeclaration config@Config{..} = \case
     BindingGroupDeclaration _ ->
         internalError "BindingGroupDeclaration encountered."
 
-
 prettyGuardExpr :: Config -> (Config -> Doc) -> (Guard, Expr) -> Doc
 prettyGuardExpr config@Config{..} symbol (guard, expr') =
     nest configIndent
@@ -207,12 +208,10 @@ prettyDeclarations :: Config -> [Declaration] -> Doc
 prettyDeclarations config = vsep . fmap (prettyDeclaration config)
 
 instance Pretty ValueFixity where
-    pretty (ValueFixity fixity (Qualified module' identOrConstructor) opName) =
-        pretty fixity <+> pretty name <+> text "as" <+> pretty opName
+    pretty (ValueFixity fixity name opName) =
+        pretty fixity <+> text name' <+> text "as" <+> pretty opName
         where
-            name = case identOrConstructor of
-                Left ident -> Qualified module' (pretty ident)
-                Right constructor -> Qualified module' (pretty constructor)
+            name' = showQualified (either showIdent runProperName) name
 
 instance Pretty TypeFixity where
     pretty (TypeFixity fixity typeName opName) =
@@ -238,12 +237,13 @@ prettyExpr config@Config{..} = \case
     ObjectGetter s -> underscore <> dot <> text s
     Accessor field expr -> prettyExpr config expr <> dot <> pretty field
     ObjectUpdate o ps ->
-        prettyExpr config o
-        <+> formatter lbrace rbrace (fmap (\(key, val) -> text (prettyPrintObjectKey key) <+> equals <+> nest configIndent (prettyExpr config val)) ps)
+        prettyExpr config o <+> formatter lbrace rbrace keyValues
         where
             formatter
                 | any (isExprLong . snd) ps = prettyLongList
                 | otherwise = prettyEncloseSep
+            keyValues =
+                fmap (prettyKeyValue config prettyExpr (space <> equals)) ps
     Abs (Left arg) val -> prettyAbs config arg val True
     Abs (Right arg) val ->
         backslash
@@ -258,11 +258,11 @@ prettyExpr config@Config{..} = \case
     Var qualified -> pretty qualified
     Op qualified -> parens (pretty qualified)
     IfThenElse expr1 expr2 expr3 ->
-        sep
-          [ text "if" <+> prettyExpr config expr1
-          , text "then" <+> prettyExpr config expr2
-          , text "else" <+> prettyExpr config expr3
-          ]
+        group
+          ( text "if" <+> prettyExpr config expr1
+          <$> text "then" <+> prettyExpr config expr2
+          <$> text "else" <+> prettyExpr config expr3
+          )
     Constructor qualified -> pretty qualified
     Case exprs caseAlternatives ->
         line
@@ -366,12 +366,18 @@ prettyLiteralExpr config@Config{..} literal = case literal of
         formatter
             lbrace
             rbrace
-            (fmap (\(key, val) -> text (prettyPrintObjectKey key) <> colon <+> nest configIndent (prettyExpr config val)) os)
+            (fmap (prettyKeyValue config prettyExpr colon) os)
     _ -> prettyLiteral literal
     where
         formatter
             | isLiteralLong literal = prettyLongList
             | otherwise = prettyEncloseSep
+
+prettyKeyValue :: Config -> (Config -> a -> Doc) -> Doc -> (String, a) -> Doc
+prettyKeyValue config@Config{..} printer separator (key, val) =
+    text (prettyPrintObjectKey key)
+    <> separator
+    <+> nest configIndent (printer config val)
 
 isLiteralLong :: Literal Expr -> Bool
 isLiteralLong = \case
@@ -402,15 +408,15 @@ isInnerLiteralLong = \case
     _ -> False
 
 prettyLiteralBinder :: Config -> Literal Binder -> Doc
-prettyLiteralBinder config literal = case literal of
+prettyLiteralBinder config = \case
     ArrayLiteral vs ->
         prettyEncloseSep lbracket rbracket (fmap (prettyBinder config) vs)
     ObjectLiteral os ->
         prettyEncloseSep
             lbrace
             rbrace
-            (fmap (\(key, val) -> text (prettyPrintObjectKey key) <> colon <+> prettyBinder config val) os)
-    _ -> prettyLiteral literal
+            (fmap (prettyKeyValue config prettyBinder colon) os)
+    literal -> prettyLiteral literal
 
 prettyBinder :: Config -> Binder -> Doc
 prettyBinder config = \case
