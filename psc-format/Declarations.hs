@@ -250,7 +250,11 @@ prettyExpr config@Config{..} = \case
         <> prettyBinder config arg
         <+> rightArrow config
         <$> indent configIndent (prettyExpr config val)
-    App expr1 expr2 -> prettyExpr config expr1 <+> prettyExpr config expr2
+    app@App{} -> group (prettyApp app)
+        where
+            prettyApp = \case
+                App expr1 expr2 -> prettyApp expr1 <$> prettyExpr config expr2
+                expr -> prettyExpr config expr
     Var qualified -> pretty qualified
     Op qualified -> parens (pretty qualified)
     IfThenElse expr1 expr2 expr3 ->
