@@ -153,10 +153,7 @@ prettyDeclaration config@Config{..} = \case
     TypeInstanceDeclaration ident constraints qualified types body ->
         case body of
             DerivedInstance -> text "derive" <+> header
-            ExplicitInstance declarations ->
-                header
-                <+> text "where"
-                <$> indent configIndent (prettyDeclarations config declarations)
+            ExplicitInstance declarations -> header <> body' declarations
         where
             header =
                 text "instance"
@@ -164,8 +161,13 @@ prettyDeclaration config@Config{..} = \case
                 <+> doubleColon config
                 <> prettyConstraints config space space rightFatArrow constraints
                 <+> pretty qualified
-                -- TODO: why are we only taking the first type?
-                <> prettyShortType config space (head types)
+                <> spaceSeparatedList (fmap (prettyShortType config empty) types)
+            body' = \case
+                [] -> empty
+                decls ->
+                    space
+                    <> text "where"
+                    <$> indent configIndent (prettyDeclarations config decls)
     PositionedDeclaration _ comments declaration ->
         prettyList comments <> prettyDeclaration config declaration
     DataBindingGroupDeclaration _ ->
