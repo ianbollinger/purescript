@@ -176,7 +176,7 @@ prettyConstraints config@Config{..} before preArrow arrow = \case
     where
         prettyConstraint (Constraint class' args _) =
             pretty class'
-            <> spaceSeparatedList (fmap (prettyTypeAtom config empty) args)
+            <> hcat (fmap (prettyTypeAtom config space) args)
 
 prettyTypeList :: Config -> [(String, Maybe Kind)] -> Doc
 prettyTypeList config = spaceSeparatedList . fmap go

@@ -7,11 +7,12 @@ import Prelude hiding ((<$>))
 import Text.PrettyPrint.ANSI.Leijen
 
 listify :: [Doc] -> Doc
-listify = cat . punctuate (comma <> space)
+listify = hcat . punctuate comma
 
 prettyEncloseSep :: Doc -> Doc -> [Doc] -> Doc
 prettyEncloseSep left right = \case
-    [] -> left <> right
+    -- TODO: an extra space can be inserted here.
+    [] -> space <> left <> right
     x : xs ->
         group (vcat (empty : left <> flatAlt space empty <> x : fmap (comma <+>) xs) <$$> right)
 

@@ -26,13 +26,12 @@ import Language.PureScript.Environment (showDataDeclType)
 import Language.PureScript.Names (runProperName, showIdent, showQualified)
 import Language.PureScript.Pretty.Common (prettyPrintObjectKey)
 
-import Comments ()
+import Comments (prettyComments)
 import Config (Config(..))
 import Crash (internalError)
 import Kind (prettyKind)
 import Names ()
-import Pretty (listify, prettyEncloseSep, prettyLongList, prettySingleLineList,
-               spaceSeparatedList)
+import Pretty (listify, prettyEncloseSep, prettyLongList, prettySingleLineList)
 import Symbols (at, doubleColon, leftArrow, leftFatArrow, pipe, rightArrow,
                 rightFatArrow, tick, underscore)
 import Types (prettyConstraints, prettyLongType, prettyShortType, prettyType,
@@ -103,9 +102,9 @@ prettyDeclaration config@Config{..} = \case
                     nest configIndent
                         ( space
                         <> equals
-                        </> prettyExpr config expression
+                        <> prettyExpr config SoftLine NoIndent expression
                         )
-            binders' = spaceSeparatedList (fmap (prettyBinder config) binders)
+            binders' = hcat (fmap (prettyBinder config Space NoIndent) binders)
     ExternDeclaration ident typ ->
         nest configIndent
             ( text "foreign"
@@ -161,7 +160,7 @@ prettyDeclaration config@Config{..} = \case
                 <+> doubleColon config
                 <> prettyConstraints config space space rightFatArrow constraints
                 <+> pretty qualified
-                <> spaceSeparatedList (fmap (prettyShortType config empty) types)
+                <> hcat (fmap (prettyShortType config space) types)
             body' = \case
                 [] -> empty
                 decls ->
@@ -179,9 +178,9 @@ prettyGuardExpr :: Config -> (Config -> Doc) -> (Guard, Expr) -> Doc
 prettyGuardExpr config@Config{..} symbol (guard, expr') =
     nest configIndent
         ( pipe
-        <+> prettyExpr config guard
+        <> prettyExpr config Space NoIndent guard
         <+> symbol config
-        </> prettyExpr config expr'
+        <> prettyExpr config SoftLine NoIndent expr'
         )
 
 prettyGuardExprs :: Config -> (Config -> Doc) -> [(Guard, Expr)] -> Doc
@@ -205,53 +204,94 @@ instance Pretty Fixity where
     pretty (Fixity associativity precedence) =
         text (showAssoc associativity) <+> pretty precedence
 
-prettyExpr :: Config -> Expr -> Doc
-prettyExpr config@Config{..} = \case
-    Literal literal -> prettyLiteralExpr config literal
-    UnaryMinus expr -> char '-' <> prettyExpr config expr
+prettyExpr :: Config -> WhiteSpace -> Indent -> Expr -> Doc
+prettyExpr config@Config{..} before indented = \case
+    Literal literal -> prettyLiteralExpr config before literal
+    UnaryMinus expr ->
+        pretty before <> char '-' <> prettyExpr config Empty indented expr
     BinaryNoParens op left right ->
-        prettyExpr config left
-        </> prettyOp op
-        <+> prettyExpr config right
+        pretty before
+        <> nest'
+            ( prettyExpr config Empty indented left
+            </> prettyOp op
+            <> prettyExpr config Space NoIndent right
+            )
         where
             prettyOp = \case
                 Op name -> pretty name
-                expr -> tick <> prettyExpr config expr <> tick
-    Parens expr -> parens (prettyExpr config expr)
-    ObjectGetter s -> underscore <> dot <> text s
-    Accessor field expr -> prettyExpr config expr <> dot <> pretty field
+                expr -> tick <> prettyExpr config Empty indented expr <> tick
+            nest' = case indented of
+                Indent -> nest configIndent
+                NoIndent -> id
+    Parens expr ->
+        pretty before <> parens (prettyExpr config Empty indented expr)
+    ObjectGetter s -> pretty before <> underscore <> dot <> text s
+    Accessor field expr ->
+        prettyExpr config before indented expr <> dot <> pretty field
     ObjectUpdate o ps ->
-        prettyExpr config o <+> formatter lbrace rbrace keyValues
+        line'
+        <> group'
+            ( before'
+            <> prettyExpr config Empty indented o
+            <> nest configIndent (formatter rbrace keyValues)
+            )
         where
+            (line', before') = case (indented, before) of
+                (NoIndent, Line) -> (line, empty)
+                (NoIndent, _) -> (empty, flatAlt line (pretty before))
+                _ -> (pretty before, empty)
+            long = any (isExprLong . snd) ps
+            group'
+                | long = id
+                | otherwise = group
             formatter
-                | any (isExprLong . snd) ps = prettyLongList
-                | otherwise = prettyEncloseSep
+                | long = prettyLongList lbrace
+                | otherwise = prettyEncloseSep (flatAlt empty space <> lbrace)
             keyValues =
                 fmap (prettyKeyValue config prettyExpr (space <> equals)) ps
-    abstraction@Abs{} -> prettyAbs config abstraction
-    app@App{} -> group (prettyApp app)
+    abstraction@Abs{} -> prettyAbs config before abstraction
+    App left right ->
+        case indented of
+            NoIndent ->
+                line'
+                <> group' (before' <> nest configIndent (prettyApp config left <> line))
+                <> prettyExpr config Empty Indent right
+            Indent ->
+                pretty before
+                <> nest configIndent (group' (prettyApp config left <> line) <> prettyExpr config Empty NoIndent right)
         where
-            prettyApp = \case
-                App expr1 expr2 -> prettyApp expr1 <$> prettyExpr config expr2
-                expr -> prettyExpr config expr
-    Var qualified -> pretty qualified
-    Op qualified -> parens (pretty qualified)
+            (line', before')
+                | isExprLong right = (line, empty)
+                | otherwise = (empty, flatAlt line (pretty before))
+            group'
+                | isExprLong left = id
+                | otherwise = group
+    Var qualified -> pretty before <> pretty qualified
+    Op qualified -> pretty before <> parens (pretty qualified)
     IfThenElse expr1 expr2 expr3 ->
-        group
-          ( text "if" <+> prettyExpr config expr1
-          <$> text "then" <+> prettyExpr config expr2
-          <$> text "else" <+> prettyExpr config expr3
+        pretty before
+        <> group'
+          ( text "if" <> prettyExpr config Space NoIndent expr1
+          <$> text "then" <> nest configIndent (prettyExpr config Space NoIndent expr2)
+          <$> text "else" <> nest configIndent (prettyExpr config Space NoIndent expr3)
           )
-    Constructor qualified -> pretty qualified
+        where
+            group'
+                | isExprLong expr1 || isExprLong expr2 || isExprLong expr3 = id
+                | otherwise = group
+    Constructor qualified -> pretty before <> pretty qualified
     Case exprs caseAlternatives ->
-        line
+        before'
         <> text "case"
-        <+> listify (fmap (prettyExpr config) exprs)
+        <> listify (fmap (prettyExpr config Space NoIndent) exprs)
         <+> text "of"
-        <$> indent configIndent
-            (vsep (fmap (prettyCaseAlternative config) caseAlternatives))
+        <$> indent configIndent (vsep (fmap (prettyCaseAlternative config) caseAlternatives))
+        where
+            before' = case indented of
+                NoIndent -> line
+                Indent -> pretty before
     TypedValue _ expr typ ->
-        prettyExpr config expr
+        prettyExpr config before indented expr
         <+> doubleColon config
         <> prettyShortType config space typ
     Let decls expr ->
@@ -261,14 +301,28 @@ prettyExpr config@Config{..} = \case
             <+> prettyDeclarations config decls
             )
         <$> text "in"
-        <+> nest configIndent (prettyExpr config expr)
+        <> nest configIndent (prettyExpr config Space NoIndent expr)
     Do doNotationElements ->
-        text "do"
-        <$> vsep (fmap (prettyDoNotationElement config) doNotationElements)
-    AnonymousArgument -> underscore
-    Hole hole -> text ('?' : hole)
+        case indented of
+            NoIndent ->
+                pretty (if before == SoftLine || before == Line then Space else before)
+                <> text "do"
+                <> elements
+            Indent ->
+                pretty before
+                <> text "do"
+                <> nest configIndent elements
+        where
+            elements =
+                hcat (fmap (prettyDoNotationElement config Line) doNotationElements)
+    AnonymousArgument -> pretty before <> underscore
+    Hole hole -> pretty before <> text ('?' : hole)
     PositionedValue _ comments expr ->
-        prettyList comments <> prettyExpr config expr
+        prettyComments line comments <> prettyExpr config before' indented' expr
+        where
+            (before', indented') = case comments of
+                [] -> (before, indented)
+                _ -> (Empty, Indent)
     TypeClassDictionaryConstructorApp _ _ ->
         internalError "TypeClassDictionaryConstructorApp encountered."
     TypeClassDictionary _ _ -> internalError "TypeClassDictionary encountered."
@@ -277,13 +331,31 @@ prettyExpr config@Config{..} = \case
     SuperClassDictionary _ _ ->
         internalError "SuperClassDictionary encountered."
 
-prettyAbs :: Config -> Expr -> Doc
-prettyAbs config = (backslash <>) . go
+prettyApp :: Config -> Expr -> Doc
+prettyApp config@Config{..} = \case
+    App expr1 expr2 ->
+        prettyApp config expr1 <> prettyExpr config Line Indent expr2
+    expr -> prettyExpr config Empty NoIndent expr
+
+prettyAbs :: Config -> WhiteSpace -> Expr -> Doc
+prettyAbs config@Config{..} before expr =
+    group' (flatAlt line (pretty before) <> backslash <> go Empty expr)
     where
-        go = \case
-            Abs (Left arg) val -> text (showIdent arg) <+> go val
-            Abs (Right arg) val -> prettyBinder config arg <+> go val
-            val -> rightArrow config </> prettyExpr config val
+        go before' = \case
+            Abs (Left arg) val ->
+                pretty before' <> text (showIdent arg) <> go Space val
+            Abs (Right arg) val ->
+                prettyBinder config before' NoIndent arg <> go Space val
+            val ->
+                pretty before'
+                <> rightArrow config
+                <> nest configIndent (prettyExpr config Line NoIndent val)
+        isLong = \case
+            Abs _ val -> isLong val
+            val -> isExprLong val
+        group'
+            | isLong expr = id
+            | otherwise = group
 
 instance Pretty ImportDeclarationType where
     pretty = \case
@@ -295,31 +367,26 @@ instance Pretty ImportDeclarationType where
             <> text "hiding"
             <+> prettySingleLineList lparen rparen (fmap pretty refs)
 
-prettyDoNotationElement :: Config -> DoNotationElement -> Doc
-prettyDoNotationElement config@Config{..} = \case
-    DoNotationValue expr -> prettyDoExpr config expr
+prettyDoNotationElement :: Config -> WhiteSpace -> DoNotationElement -> Doc
+prettyDoNotationElement config@Config{..} before = \case
+    DoNotationValue expr -> prettyExpr config before Indent expr
     DoNotationBind binder expr ->
-        prettyBinder config binder
+        prettyBinder config before NoIndent binder
         <+> leftArrow config
-        <+> nest configIndent (prettyExpr config expr)
+        <> nest configIndent (prettyExpr config Space NoIndent expr)
     DoNotationLet declarations ->
-        nest 4
+        pretty before
+        <> nest 4
             ( text "let"
             <+> prettyDeclarations config declarations
             )
     PositionedDoNotationElement _ comments element ->
-        prettyList comments <> prettyDoNotationElement config element
-
-prettyDoExpr :: Config -> Expr -> Doc
-prettyDoExpr config@Config{..} = \case
-    PositionedValue _ comments expr ->
-        prettyList comments <> nest configIndent (prettyDoExpr config expr)
-    Case exprs caseAlternatives ->
-        text "case"
-        <+> listify (fmap (prettyExpr config) exprs)
-        <+> text "of"
-        <$> vsep (fmap (prettyCaseAlternative config) caseAlternatives)
-    expr -> prettyExpr config expr
+        prettyComments line comments
+        <> prettyDoNotationElement config before' element
+        where
+            before' = case comments of
+                [] -> before
+                _ -> Empty
 
 prettyCaseAlternative :: Config -> CaseAlternative -> Doc
 prettyCaseAlternative config@Config{..} CaseAlternative{..} =
@@ -331,11 +398,13 @@ prettyCaseAlternative config@Config{..} CaseAlternative{..} =
             nest configIndent
                 ( binders
                 <+> rightArrow config
-                </> prettyExpr config expr
+                <> prettyExpr config SoftLine NoIndent expr
                 )
     where
-        binders =
-            listify (fmap (prettyBinder config) caseAlternativeBinders)
+        binders = case caseAlternativeBinders of
+            [] -> empty
+            x : xs ->
+                listify (prettyBinder config Empty NoIndent x : fmap (prettyBinder config Space NoIndent) xs)
 
 prettyLiteral :: Literal a -> Doc
 prettyLiteral = \case
@@ -345,26 +414,34 @@ prettyLiteral = \case
     BooleanLiteral b -> text $ if b then "true" else "false"
     _ -> internalError "Unknown literal encountered."
 
-prettyLiteralExpr :: Config -> Literal Expr -> Doc
-prettyLiteralExpr config@Config{..} literal = case literal of
+prettyLiteralExpr :: Config -> WhiteSpace -> Literal Expr -> Doc
+prettyLiteralExpr config@Config{..} before literal = case literal of
     ArrayLiteral vs ->
-        formatter lbracket rbracket (fmap (prettyExpr config) vs)
+        formatter
+            lbracket
+            rbracket
+            (fmap (nest configIndent . prettyExpr config Empty NoIndent) vs)
     ObjectLiteral os ->
         formatter
             lbrace
             rbrace
             (fmap (prettyKeyValue config prettyExpr colon) os)
-    _ -> prettyLiteral literal
+    _ -> pretty before <> prettyLiteral literal
     where
-        formatter
-            | isLiteralLong literal = prettyLongList
-            | otherwise = prettyEncloseSep
+        formatter symbol
+            | isLiteralLong literal = prettyLongList symbol
+            | otherwise = prettyEncloseSep (flatAlt empty (pretty before) <> symbol)
 
-prettyKeyValue :: Config -> (Config -> a -> Doc) -> Doc -> (String, a) -> Doc
+prettyKeyValue
+    :: Config
+    -> (Config -> WhiteSpace -> Indent -> a -> Doc)
+    -> Doc
+    -> (String, a)
+    -> Doc
 prettyKeyValue config@Config{..} printer separator (key, val) =
     text (prettyPrintObjectKey key)
     <> separator
-    <+> nest configIndent (printer config val)
+    <> nest configIndent (printer config Space NoIndent val)
 
 isLiteralLong :: Literal Expr -> Bool
 isLiteralLong = \case
@@ -394,36 +471,70 @@ isInnerLiteralLong = \case
     ObjectLiteral _ -> True
     _ -> False
 
-prettyLiteralBinder :: Config -> Literal Binder -> Doc
-prettyLiteralBinder config = \case
+-- TODO: should binders be allowed to be split over multiple lines?
+prettyLiteralBinder :: Config -> WhiteSpace -> Literal Binder -> Doc
+prettyLiteralBinder config before = \case
     ArrayLiteral vs ->
-        prettyEncloseSep lbracket rbracket (fmap (prettyBinder config) vs)
+        prettySingleLineList
+            (pretty before <> lbracket)
+            rbracket
+            (fmap (prettyBinder config Empty NoIndent) vs)
     ObjectLiteral os ->
-        prettyEncloseSep
-            lbrace
+        prettySingleLineList
+            (pretty before <> lbrace)
             rbrace
             (fmap (prettyKeyValue config prettyBinder colon) os)
-    literal -> prettyLiteral literal
+    literal -> pretty before <> prettyLiteral literal
 
-prettyBinder :: Config -> Binder -> Doc
-prettyBinder config = \case
-    NullBinder -> underscore
-    LiteralBinder literalBinder -> prettyLiteralBinder config literalBinder
-    VarBinder ident -> pretty ident
+-- TODO: the Indent parameter isn't currently used.
+prettyBinder :: Config -> WhiteSpace -> Indent -> Binder -> Doc
+prettyBinder config before indented = \case
+    NullBinder -> pretty before <> underscore
+    LiteralBinder literalBinder ->
+        prettyLiteralBinder config before literalBinder
+    VarBinder ident -> pretty before <> pretty ident
     ConstructorBinder constructorName binders ->
-        pretty constructorName
-        <> spaceSeparatedList (fmap (prettyBinder config) binders)
-    OpBinder valueOpName -> pretty valueOpName
+        pretty before
+        <> pretty constructorName
+        <> hcat (fmap (prettyBinder config Space indented) binders)
+    OpBinder valueOpName -> pretty before <> pretty valueOpName
     BinaryNoParensBinder opBinder binder1 binder2 ->
-        prettyBinder config binder1
-        <+> prettyBinder config opBinder
-        <+> prettyBinder config binder2
-    ParensInBinder binder -> parens (prettyBinder config binder)
+        prettyBinder config before indented binder1
+        <> prettyBinder config Space indented opBinder
+        <> prettyBinder config Space indented binder2
+    ParensInBinder binder ->
+        pretty before <> parens (prettyBinder config Empty indented binder)
     NamedBinder ident binder ->
-        pretty ident <> at <> prettyBinder config binder
+        pretty before
+        <> pretty ident
+        <> at
+        <> prettyBinder config Empty indented binder
     PositionedBinder _ comments binder ->
-        prettyList comments <> prettyBinder config binder
+        prettyComments line comments
+        <> prettyBinder config before' indented binder
+        where
+            before' = case comments of
+                [] -> before
+                _ -> Empty
     TypedBinder typ binder ->
-        prettyBinder config binder
+        prettyBinder config before indented binder
         <+> doubleColon config
         <> prettyShortType config space typ
+
+data WhiteSpace
+    = Empty
+    | Space
+    | SoftLine
+    | Line
+    deriving Eq
+
+instance Pretty WhiteSpace where
+    pretty = \case
+        Empty -> empty
+        Space -> space
+        SoftLine -> softline
+        Line -> line
+
+data Indent
+    = NoIndent
+    | Indent
