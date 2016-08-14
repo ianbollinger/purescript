@@ -22,7 +22,7 @@ import Prelude
 import System.Exit (exitFailure)
 import System.IO (stderr, stdout, hPutStrLn, hSetEncoding, utf8)
 
-import Text.PrettyPrint.ANSI.Leijen (displayS, renderPretty, vsep)
+import Text.PrettyPrint.ANSI.Leijen (displayS, renderSmart, vsep)
 import Options.Applicative
 
 import qualified Language.PureScript as P
@@ -74,7 +74,7 @@ runFormatter config'@Config{..} = do
                 Just o' -> writeFile o' output
             where
                 output =
-                    displayS (renderPretty 0.95 configWidth $ vsep $ fmap (\(_, m) -> prettyModule config' m) v) ""
+                    displayS (renderSmart 0.95 configWidth $ vsep $ fmap (\(_, m) -> prettyModule config' m) v) ""
         Left e -> do
             hPutStrLn stderr (P.prettyPrintMultipleErrors P.defaultPPEOptions e)
             exitFailure

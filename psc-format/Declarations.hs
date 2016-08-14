@@ -2,6 +2,7 @@
 -- matching.
 -- TODO: special characters in strings need to be re-escaped!
 -- TODO: sort imported symbols.
+-- TODO: don't insert space between opening parenthesis and case/do/lambda.
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE LambdaCase #-}
@@ -258,7 +259,7 @@ prettyExpr config@Config{..} before indented = \case
     App left right ->
         case indented of
             NoIndent ->
-                line'
+                pretty line'
                 <> group' (before' <> nest configIndent (prettyApp config left <> line))
                 <> prettyExpr config Empty Indent right
             Indent ->
@@ -344,7 +345,8 @@ prettyApp config@Config{..} = \case
 
 prettyAbs :: Config -> WhiteSpace -> Expr -> Doc
 prettyAbs config@Config{..} before expr =
-    group' (flatAlt line (pretty before) <> backslash <> go Empty expr)
+    -- TODO: can be doubly indented.
+    group' (pretty before <> backslash <> go Empty expr)
     where
         go before' = \case
             Abs (Left arg) val ->
@@ -456,11 +458,11 @@ isLiteralLong = \case
 
 isExprLong :: Expr -> Bool
 isExprLong = \case
-    Literal literal -> isInnerLiteralLong literal
+    Literal literal -> isLiteralLong literal
     BinaryNoParens _ left right -> isExprLong left || isExprLong right
     Parens expr -> isExprLong expr
     ObjectUpdate _ _ -> True
-    Abs _ _ -> True
+    Abs _ expr -> isExprLong expr
     App expr1 expr2 -> isExprLong expr1 || isExprLong expr2
     IfThenElse{} -> True
     Case _ _ -> True
@@ -468,12 +470,6 @@ isExprLong = \case
     Let _ _ -> True
     Do _ -> True
     PositionedValue _ comments expr -> not (null comments) || isExprLong expr
-    _ -> False
-
-isInnerLiteralLong :: Literal Expr -> Bool
-isInnerLiteralLong = \case
-    ArrayLiteral _ -> True
-    ObjectLiteral _ -> True
     _ -> False
 
 -- TODO: should binders be allowed to be split over multiple lines?
