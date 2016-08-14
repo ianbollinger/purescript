@@ -1,3 +1,8 @@
+-- TODO: extra lines get inserted between functions using equational pattern
+-- matching.
+-- TODO: special characters in strings need to be re-escaped!
+-- TODO: sort imported symbols.
+
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}

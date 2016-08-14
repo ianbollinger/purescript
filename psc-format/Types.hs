@@ -55,7 +55,7 @@ prettyTypeAtom config@Config{..} before = \case
     ForAll{} -> internalError "ForAll type encountered."
     TUnknown _ -> internalError "TUnknown type encountered."
     Skolem{} -> internalError "Skolem type encountered."
-    _ -> internalError "Non-atom type encountered."
+    x -> internalError ("Non-atom type encountered: " ++ show x)
 
 -- |
 -- `prettyPrintApp config indentationLevel typ` pretty-prints a type application
@@ -112,11 +112,11 @@ prettyTypeComplex config before space'' after typ' =
                 prettyConstraints config space' line rightFatArrow constraints
                 <> prettyPrint space typ
             PrettyPrintFunction a b ->
-                prettyTypeAtom config space' a
+                prettyPrint space' a
                 <$> rightArrow config
                 <> prettyPrint space b
             BinaryNoParensType op left right ->
-                prettyTypeAtom config space' left
+                prettyPrint space' left
                 <$> prettyTypeAtom config empty op
                 <> prettyPrint space right
             t -> prettyTypeAtom config space' t
