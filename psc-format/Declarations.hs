@@ -1,5 +1,3 @@
--- TODO: extra lines get inserted between functions using equational pattern
--- matching.
 -- TODO: special characters in strings need to be re-escaped!
 -- TODO: sort imported symbols.
 -- TODO: don't insert space between opening parenthesis and case/do/lambda.

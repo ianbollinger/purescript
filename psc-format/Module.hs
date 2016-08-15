@@ -57,14 +57,21 @@ prettyTopLevelDeclarations :: Config -> [Declaration] -> Doc
 prettyTopLevelDeclarations config = \case
     [] -> empty
     [decl] -> prettyDeclaration config decl
-    [x@(PositionedDeclaration _ _ TypeDeclaration{}), y@(PositionedDeclaration _ _ ValueDeclaration{})] ->
-        prettyDeclaration config x <$> prettyDeclaration config y
-    x@(PositionedDeclaration _ _ TypeDeclaration{}) : y@(PositionedDeclaration _ _ ValueDeclaration{}) : xs ->
-        prettyDeclaration config x
-        <$> prettyDeclaration config y
-        <$> hardline
-        <> prettyTopLevelDeclarations config xs
+    x : xs@(y : _)
+        | (isTypeDecl x && isValueDecl y) ||
+          (isValueDecl x && isValueDecl y && name x == name y) ->
+            prettyDeclaration config x <$> prettyTopLevelDeclarations config xs
     x : xs ->
         prettyDeclaration config x
         <$> hardline
         <> prettyTopLevelDeclarations config xs
+    where
+        name = \case
+            PositionedDeclaration _ _ (ValueDeclaration n _ _ _) -> Just n
+            _ -> Nothing
+        isTypeDecl = \case
+            PositionedDeclaration _ _ TypeDeclaration{} -> True
+            _ -> False
+        isValueDecl = \case
+            PositionedDeclaration _ _ ValueDeclaration{} -> True
+            _ -> False
