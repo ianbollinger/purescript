@@ -55,7 +55,7 @@ prettyTypeAtom config@Config{..} before = \case
     ForAll{} -> internalError "ForAll type encountered."
     TUnknown _ -> internalError "TUnknown type encountered."
     Skolem{} -> internalError "Skolem type encountered."
-    x -> internalError ("Non-atom type encountered: " ++ show x)
+    x -> internalError "Non-atom type encountered."
 
 -- |
 -- `prettyPrintApp config indentationLevel typ` pretty-prints a type application
@@ -74,7 +74,7 @@ prettyTypeApp config@Config{..} indentationLevel before =
             row@RCons{} -> prettyRowType config empty row
             typ -> prettyTypeAtom config empty typ
 
--- Copied from Language.PureScript.Pretty.Types.
+-- Adapted from Language.PureScript.Pretty.Types.
 insertPlaceholders :: Type -> Type
 insertPlaceholders = everywhereOnTypesTopDown convertForAlls . everywhereOnTypes convert
   where
@@ -85,6 +85,8 @@ insertPlaceholders = everywhereOnTypesTopDown convertForAlls . everywhereOnTypes
     where
     go idents (ForAll ident' ty' _) = go (ident' : idents) ty'
     go idents other = PrettyPrintForAll idents other
+  -- TODO: temporary hack until everywhereOnTypesTopDown is patched upstream.
+  convertForAlls (ParensInType typ) = ParensInType (convertForAlls typ)
   convertForAlls other = other
 
 isTypeAtom :: Type -> Bool
