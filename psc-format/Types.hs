@@ -208,7 +208,7 @@ prettyLongRow config@Config{..} open close inside =
         listToDoc types rest = case types of
             [] -> open <> prettyTail rest <> close
             [t] -> start t <> end
-            t : ts -> start t <$$> vsep (fmap format ts) <> end
+            t : ts -> start t <$$> vcat (fmap format ts) <> end
             where
                 format typ = comma <+> prettyNameAndType typ
                 start typ =
